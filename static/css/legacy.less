@@ -30,8 +30,8 @@
 @import (less) "legacy-wmd.less";
 
 @import (less) "components/read-panel.less";
-@import (less) 'components/diff.less';
-@import (less) 'components/iconochive.less';
+@import (less) "components/diff.less";
+@import (less) "components/iconochive.less";
 @import (less) "components/carousel.less";
 @import (less) "components/editions.less";
 @import (less) "components/header.less";
@@ -95,13 +95,14 @@ table {
       text-align: right;
     }
   }
-  // openlibrary/templates/lib/history.html
-  &#pageHistory,
+
+  // `#pageHistory` used inside openlibrary/templates/lib/history.html
+  // `.changeHistory` used inside:
   // openlibrary/templates/admin/imports.html
   // openlibrary/templates/admin/imports_by_date.html
   // openlibrary/templates/admin/ip/view.html
   // openlibrary/templates/admin/people/edits.html
-  // openlibrary/templates/merge/editions2.html
+  &#pageHistory,
   &.changeHistory {
     th {
       border-bottom: 1px solid @grey-e7e7e7;
@@ -189,14 +190,6 @@ li {
       &:hover {
         cursor: pointer;
         border: 5px solid @link-blue;
-      }
-    }
-  }
-  &.selected {
-    img {
-      border: 5px solid @orange;
-      &:hover {
-        border: 5px solid @orange;
       }
     }
   }
@@ -309,18 +302,6 @@ q {
 @import (less) "base/helpers-common.less";
 @import (less) "base/helpers-misc.less";
 
-// openlibrary/macros/Dashboard.html
-#tooltip {
-  position: absolute;
-  display: none;
-  border: 1px solid @lighter-grey;
-  padding: 4px;
-  background-color: @white;
-  font-size: .75em;
-  opacity: .80;
-}
-
-// openlibrary/plugins/search/templates/advanced_search.html
 // openlibrary/templates/lib/pagination.html
 // openlibrary/templates/type/author/view.html
 .pagination {
@@ -493,11 +474,15 @@ p {
   &.thanks {
     background-image: url(/images/icons/icon_check.png);
   }
-  &.print-disabled-download {
-    text-align: center;
-    margin-top: 5px;
-    padding: 5px;
+}
+
+.print-disabled-download {
+  a {
+    flex: 1;
   }
+  display: flex;
+  font-size: 10px;
+  align-items: center;
 }
 
 input[type=text],
@@ -624,12 +609,9 @@ div#content {
 // openlibrary/templates/account/create.html
 // openlibrary/templates/account/email/forgot-ia.html
 // openlibrary/templates/account/email/forgot.html
-// openlibrary/templates/account/email.html
-// openlibrary/templates/account/password.html
 // openlibrary/templates/form.html
 // openlibrary/templates/login.html
 // openlibrary/templates/merge/authors.html
-// openlibrary/templates/merge/editions.html
 div.note {
   font-size: 1.0em;
   font-family: @lucida_sans_serif-1;
@@ -748,8 +730,8 @@ form {
 
 // openlibrary/templates/account/verify/failed.html
 // openlibrary/templates/form.html
+// FIXME: `div.valid` is possibly unused/or used in JS?
 div.invalid,
-// possibly unused/or used in JS?
 div.valid {
   float: left;
   font-size: 1.0em !important;
@@ -780,7 +762,6 @@ div#scrollBtm {
 // openlibrary/templates/lists/home.html
 // openlibrary/templates/search/advancedsearch.html
 // openlibrary/templates/search/authors.html
-// openlibrary/templates/search/editions.html
 // openlibrary/templates/search/inside.html
 // openlibrary/templates/search/lists.html
 // openlibrary/templates/search/publishers.html
@@ -902,7 +883,6 @@ div.searchOptions {
 // openlibrary/templates/lists/home.html
 // openlibrary/templates/search/advancedsearch.html
 // openlibrary/templates/search/authors.html
-// openlibrary/templates/search/editions.html
 // openlibrary/templates/search/inside.html
 // openlibrary/templates/search/lists.html
 // openlibrary/templates/search/publishers.html
@@ -1018,7 +998,7 @@ hr.forgot-padding {
 }
 
 /* FOOTER */
-@import (less) 'components/footer.less';
+@import (less) "components/footer.less";
 
 /* CONTENT */
 div.contentWide,
@@ -1106,10 +1086,7 @@ div#searchResults ul {
   margin-bottom: 0;
 }
 
-// openlibrary/macros/FulltextResults.html
-// openlibrary/plugins/search/templates/advanced_search.html
 // openlibrary/templates/books/check.html
-// openlibrary/templates/search/editions.html
 // openlibrary/templates/type/author/view.html
 // openlibrary/templates/work_search.html
 div#searchResults {
@@ -1232,9 +1209,8 @@ div#searchResults {
 
 /* SEARCH FACETS */
 
-@import (less) 'components/search-results-container.less';
+@import (less) "components/search-results-container.less";
 
-// openlibrary/plugins/search/templates/advanced_search.html
 // openlibrary/templates/work_search.html
 div#searchFacets {
   width: 220px;
@@ -1370,10 +1346,10 @@ div.books {
   .coverMagic {
     float: left;
     min-width: 84px;
-    max-width: 225px;
     min-height: 115px;
     text-align: center;
     margin: 0 5px 20px 0;
+    max-width: 100%;
   }
   .SRPCover {
     float: left;
@@ -1449,9 +1425,9 @@ tr {
   }
 }
 
-// openlibrary/templates/type/author/edit.html
+// `input.addweb` is used in openlibrary/templates/type/author/edit.html
+// `select#select-id` is used in openlibrary/templates/books/edit/edition.html
 input.addweb,
-// openlibrary/templates/books/edit/edition.html
 select#select-id {
   max-width: 300px;
 }
@@ -1549,7 +1525,6 @@ ul {
 // openlibrary/templates/account/borrow.html
 // openlibrary/templates/publishers/view.html
 // openlibrary/templates/search/authors.html
-// openlibrary/templates/search/editions.html
 // openlibrary/templates/search/publishers.html
 // openlibrary/templates/search/subjects.html
 // openlibrary/templates/showia.html
@@ -1574,10 +1549,6 @@ ul {
 @import (less) "components/page-history.less";
 
 // openlibrary/macros/CoverImage.html
-// openlibrary/macros/CoverImageAuthor.html
-// openlibrary/macros/CoverImageWork.html
-// openlibrary/macros/EditionImageWork.html
-// openlibrary/macros/SearchResultsCovers.html
 // openlibrary/macros/SRPCoverImage.html
 // openlibrary/templates/covers/book_cover.html
 // openlibrary/templates/covers/book_cover_single_edition.html
@@ -1595,7 +1566,6 @@ ul {
   line-height: normal;
 }
 
-//openlibrary/macros/SearchResultsCovers.html
 // openlibrary/macros/SRPCoverImage.html
 // openlibrary/templates/covers/book_cover.html
 // openlibrary/templates/covers/book_cover_single_edition.html
@@ -1608,7 +1578,6 @@ ul {
 
 // openlibrary/macros/SearchResults.html
 // openlibrary/macros/SearchResultsWork.html
-// openlibrary/plugins/search/templates/advanced_search.html
 // openlibrary/templates/books/show.html
 // openlibrary/templates/books/works-show.html
 // openlibrary/templates/type/list/embed.html
@@ -1691,7 +1660,6 @@ span.actions {
 // openlibrary/templates/work_search.html
 // openlibrary/templates/books/check.html
 // openlibrary/templates/account/books.html
-// openlibrary/plugins/search/templates/advanced_search.html
 // openlibrary/macros/SearchResults.html
 // openlibrary/macros/FulltextResults.html
 // why not form#siteSearch ?
@@ -1701,13 +1669,11 @@ ul#siteSearch {
   }
   // openlibrary/macros/SearchResults.html
   // openlibrary/macros/SearchResultsWork.html
-  // openlibrary/plugins/search/templates/advanced_search.html
   // openlibrary/templates/books/check.html
   // openlibrary/templates/books/show.html
   // openlibrary/templates/books/works-show.html
   // openlibrary/templates/lists/preview.html
   // openlibrary/templates/lists/snippet.html
-  // openlibrary/templates/search/editions.html
   // openlibrary/templates/type/list/embed.html
   // openlibrary/templates/type/list/view.html
   span.resultTitle {
@@ -1716,14 +1682,16 @@ ul#siteSearch {
     font-family: @lucida_sans_serif-1;
     color: @grey;
   }
-  // openlibrary/macros/SearchResults.html
-  // openlibrary/macros/SearchResultsWork.html
+
+  // `span.resultTitle .bookauthor` is used in:
+  // * openlibrary/macros/SearchResults.html
+  // * openlibrary/macros/SearchResultsWork.html
+  // `span.resultPublisher` is used in
+  // * openlibrary/macros/SearchResultsWork.htm
+  // * openlibrary/templates/books/check.html
+  // * openlibrary/templates/books/show.html
+  // * openlibrary/templates/books/works-show.html
   span.resultTitle .bookauthor,
-  // openlibrary/macros/SearchResultsWork.htm
-  // openlibrary/plugins/search/templates/advanced_search.html
-  // openlibrary/templates/books/check.html
-  // openlibrary/templates/books/show.html
-  // openlibrary/templates/books/works-show.html
   span.resultPublisher {
     font-size: .75em;
     color: @grey;
@@ -1732,10 +1700,8 @@ ul#siteSearch {
   // openlibrary/templates/books/works-show.html
   // openlibrary/templates/books/show.html
   // openlibrary/templates/books/check.html
-  // openlibrary/plugins/search/templates/advanced_search.html
   // openlibrary/macros/SearchResultsWork.html
   // openlibrary/macros/SearchResults.html
-  // openlibrary/templates/search/editions.html
   span.resultPublisher {
     display: block;
   }
@@ -1764,22 +1730,6 @@ div.narrow {
     span.resultTitle {
       max-width: 500px !important;
     }
-  }
-}
-
-// openlibrary/templates/covers/change.html
-div#throbber {
-  position: absolute;
-  width: 220px;
-  height: 19px;
-  top: 280px;
-  left: 210px;
-  text-align: center;
-  background-color: transparent;
-  background-image: url(/images/ajax-loader-bar.gif);
-  background-repeat: no-repeat;
-  h3 {
-    margin-top: 35px;
   }
 }
 
@@ -1867,30 +1817,6 @@ div.addfield {
   }
 }
 
-// openlibrary/templates/type/about/view.html
-#flickr {
-  &_badge_uber_wrapper {
-    a {
-      &:hover,
-      &:link,
-      &:active,
-      &:visited {
-        text-decoration: none !important;
-        background: inherit !important;
-        color: @flickr-brand-blue;
-      }
-    }
-  }
-  &_badge_wrapper {
-    margin: 0 auto;
-    text-align: center;
-    img {
-      display: block;
-      margin: 0 auto 10px;
-    }
-  }
-}
-
 /* CHARTING */
 @import (less) "components/chart.less";
 
@@ -1905,8 +1831,6 @@ div.mergeThis {
 }
 @import (less) "components/merge-form.less";
 
-// openlibrary/templates/merge/editions2.html
-// openlibrary/templates/merge/history.html
 // openlibrary/templates/recentchanges/default/view.html
 // openlibrary/templates/recentchanges/merge-authors/view.html
 // openlibrary/templates/recentchanges/undo/view.html
@@ -1921,8 +1845,6 @@ div.mergeThis {
 }
 
 /* BORROWING */
-// openlibrary/macros/LoanFormTest.html
-// openlibrary/macros/LoanForm.html
 div.preSubmit,
 div.postSubmit {
   text-align: center;
@@ -1961,7 +1883,7 @@ div.postSubmit {
   }
 }
 
-@import (less) 'components/listLists.less';
+@import (less) "components/listLists.less";
 
 // openlibrary/templates/lists/widget.html
 .heart-adjust {
@@ -2019,8 +1941,6 @@ div#subjectLists {
 
 /* LIBRARIES */
 
-@import (less) "components/header.less";
-
 // use manage-covers instead
 // openlibrary/templates/type/edition-history/view.html
 // openlibrary/templates/type/edition/view.html
@@ -2034,13 +1954,6 @@ div#subjectLists {
 // openlibrary/macros/databarWork.html
 #read.panel {
   margin-bottom: 10px;
-}
-
-// openlibrary/macros/daisy.html
-// openlibrary/templates/books/edition-sort.html
-.daisy-lock {
-  position: relative;
-  top: 1px;
 }
 
 // openlibrary/macros/SearchResultsWork.html
@@ -2103,10 +2016,6 @@ div#subjectLists {
     height: 2.5em;
     padding: 0 10px;
   }
-  span.activated-check {
-    color: @green;
-    margin-right: 2px;
-  }
 }
 
 // openlibrary/templates/account/books.html
@@ -2135,7 +2044,6 @@ div#subjectLists {
   }
 }
 @import (less) "components/searchResultItemCta.less";
-@import (less) "components/work.less";
 
 @media only screen and (min-width: @width-breakpoint-tablet) {
   span {

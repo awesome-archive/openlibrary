@@ -1,14 +1,24 @@
 """Various web.py application processors used in OL.
 """
 import os
-import urllib
 import web
 
+from infogami.utils.view import render
 from openlibrary.core import helpers as h
+
+from six.moves import urllib
+
+
+try:
+    from booklending_utils.openlibrary import is_exclusion
+except ImportError:
+    def is_exclusion(obj):
+        """Processor for determining whether records require exclusion"""
+        return False
 
 class ReadableUrlProcessor:
     """Open Library code works with urls like /books/OL1M and
-    /books/OL1M/edit. This processor seemlessly changes the urls to
+    /books/OL1M/edit. This processor seamlessly changes the urls to
     /books/OL1M/title and /books/OL1M/title/edit.
 
     The changequery function is also customized to support this.
@@ -33,10 +43,10 @@ class ReadableUrlProcessor:
         real_path, readable_path = get_readable_path(web.ctx.site, web.ctx.path, self.patterns, encoding=web.ctx.encoding)
 
         #@@ web.ctx.path is either quoted or unquoted depends on whether the application is running
-        #@@ using builtin-server or lighttpd. Thats probably a bug in web.py.
+        #@@ using builtin-server or lighttpd. That is probably a bug in web.py.
         #@@ take care of that case here till that is fixed.
         # @@ Also, the redirection must be done only for GET requests.
-        if readable_path != web.ctx.path and readable_path != urllib.quote(web.utf8(web.ctx.path)) and web.ctx.method == "GET":
+        if readable_path != web.ctx.path and readable_path != urllib.parse.quote(web.safestr(web.ctx.path)) and web.ctx.method == "GET":
             raise web.redirect(web.safeunicode(readable_path) + web.safeunicode(web.ctx.query))
 
         web.ctx.readable_path = readable_path
@@ -47,7 +57,14 @@ class ReadableUrlProcessor:
                     'publishers', 'languages', 'account']
         if out and any(web.ctx.path.startswith('/%s/' % _type) for _type in V2_TYPES):
             out.v2 = True
+
+        # Exclude noindex items
+        if web.ctx.get('exclude'):
+            web.ctx.status = "404 Not Found"
+            return render.notfound(web.ctx.path)
+
         return out
+
 
 def _get_object(site, key):
     """Returns the object with the given key.
@@ -149,6 +166,9 @@ def get_readable_path(site, path, patterns, encoding=None):
         middle = '/' + h.urlsafe(title.strip())
     else:
         middle = ""
+
+    if is_exclusion(thing):
+        web.ctx.exclude = True
 
     prefix = web.safeunicode(prefix)
     middle = web.safeunicode(middle)

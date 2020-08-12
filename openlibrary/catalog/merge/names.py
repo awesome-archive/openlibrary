@@ -1,6 +1,6 @@
 from __future__ import print_function
 import re
-from normalize import normalize
+from openlibrary.catalog.merge.normalize import normalize
 
 re_split_parts = re.compile('(.*?[. ]+)')
 re_marc_name = re.compile('^(.*), (.*)$')
@@ -10,7 +10,6 @@ verbose = False
 
 titles = frozenset([normalize(x) for x in ('Mrs', 'Sir', 'pseud', 'Lady', 'Baron', 'lawyer', 'Lord', 'actress', 'Dame', 'Mr', 'Viscount', 'professeur', 'Graf', 'Dr', 'Countess', 'Ministerialrat', 'Oberamtsrat', 'Rechtsanwalt')])
 
-# marquis de
 
 def flip_name(name):
     m = re_marc_name.match(name)

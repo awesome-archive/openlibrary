@@ -3,20 +3,18 @@ import simplejson
 import babel
 import babel.core
 import babel.dates
-from UserDict import DictMixin
 from collections import defaultdict
 import re
 import random
-import urllib
-import urllib2
 import xml.etree.ElementTree as etree
 import datetime
 import gzip
-import StringIO
 import logging
-from HTMLParser import HTMLParser
 
 import six
+from six.moves import urllib
+from six.moves.collections_abc import MutableMapping
+from six.moves.html_parser import HTMLParser
 
 from infogami import config
 from infogami.utils import view, delegate, stats
@@ -29,7 +27,7 @@ from openlibrary.core.helpers import commify, parse_datetime
 from openlibrary.core.middleware import GZipMiddleware
 from openlibrary.core import cache, ab
 
-class MultiDict(DictMixin):
+class MultiDict(MutableMapping):
     """Ordered Dictionary that can store multiple values.
 
         >>> d = MultiDict()
@@ -44,11 +42,11 @@ class MultiDict(DictMixin):
         Traceback (most recent call last):
             ...
         KeyError: 'z'
-        >>> d.keys()
+        >>> list(d)
         ['x', 'x', 'y']
-        >>> d.items()
+        >>> list(d.items())
         [('x', 1), ('x', 2), ('y', 3)]
-        >>> d.multi_items()
+        >>> list(d.multi_items())
         [('x', [1, 2]), ('y', [3])]
     """
     def __init__(self, items=(), **kw):
@@ -70,6 +68,13 @@ class MultiDict(DictMixin):
 
     def __delitem__(self, key):
         self._items = [(k, v) for k, v in self._items if k != key]
+
+    def __iter__(self):
+        for key in self.keys():
+            yield key
+
+    def __len__(self):
+        return len(list(self.keys()))
 
     def getall(self, key):
         return [v for k, v in self._items if k == key]
@@ -169,8 +174,8 @@ def unflatten(d, seperator="--"):
     def makelist(d):
         """Convert d into a list if all the keys of d are integers."""
         if isinstance(d, dict):
-            if all(isint(k) for k in d.keys()):
-                return [makelist(d[k]) for k in sorted(d.keys(), key=int)]
+            if all(isint(k) for k in d):
+                return [makelist(d[k]) for k in sorted(d, key=int)]
             else:
                 return web.storage((k, makelist(v)) for k, v in d.items())
         else:
@@ -190,7 +195,7 @@ def fuzzy_find(value, options, stopwords=[]):
     if not options:
         return value
 
-    rx = web.re_compile("[-_\.&, ]+")
+    rx = web.re_compile(r"[-_\.&, ]+")
 
     # build word frequency
     d = defaultdict(list)
@@ -280,7 +285,7 @@ def get_changes_v2(query, revision=None):
 
     def first(seq, default=None):
         try:
-            return seq.next()
+            return next(seq)
         except StopIteration:
             return default
 
@@ -306,10 +311,7 @@ def get_changes_v2(query, revision=None):
     return [process_change(c) for c in changes]
 
 def get_changes(query, revision=None):
-    if 'history_v2' in web.ctx.features:
-        return get_changes_v2(query, revision=revision)
-    else:
-        return get_changes_v1(query, revision=revision)
+    return get_changes_v2(query, revision=revision)
 
 @public
 def get_history(page):
@@ -396,7 +398,27 @@ def add_metatag(tag="meta", **attrs):
 def url_quote(text):
     if isinstance(text, six.text_type):
         text = text.encode('utf8')
-    return urllib.quote_plus(text)
+    return urllib.parse.quote_plus(text)
+
+
+@public
+def urlencode(dict_or_list_of_tuples):
+    """
+    You probably want to use this, if you're looking to urlencode parameters. This will
+    encode things to utf8 that would otherwise cause urlencode to error.
+    :param dict or list dict_or_list_of_tuples:
+    :rtype: basestring
+    """
+    from six.moves.urllib.parse import urlencode as og_urlencode
+    tuples = dict_or_list_of_tuples
+    if isinstance(dict_or_list_of_tuples, dict):
+        tuples = dict_or_list_of_tuples.items()
+    params = [
+        (k, v.encode('utf-8') if isinstance(v, six.text_type) else v)
+        for (k, v) in tuples
+    ]
+    return og_urlencode(params)
+
 
 @public
 def entity_decode(text):
@@ -449,7 +471,7 @@ def parse_toc_row(line):
         >>> f("1.1 | Apple")
         (0, '1.1', 'Apple', '')
     """
-    RE_LEVEL = web.re_compile("(\**)(.*)")
+    RE_LEVEL = web.re_compile(r"(\**)(.*)")
     level, text = RE_LEVEL.match(line.strip()).groups()
 
     if "|" in text:
@@ -520,9 +542,9 @@ def websafe(text):
         return _websafe(text)
 
 
+from openlibrary.plugins.upstream import adapter
 from openlibrary.utils.olcompress import OLCompressor
 from openlibrary.utils import olmemcache
-import adapter
 import memcache
 
 class UpstreamMemcacheClient:
@@ -577,7 +599,7 @@ def _get_recent_changes():
             return False
 
     # ignore reverts
-    re_revert = web.re_compile("reverted to revision \d+")
+    re_revert = web.re_compile(r"reverted to revision \d+")
     def is_revert(r):
         return re_revert.match(r.comment or "")
 
@@ -649,7 +671,7 @@ def _get_blog_feeds():
     url = "http://blog.openlibrary.org/feed/"
     try:
         stats.begin("get_blog_feeds", url=url)
-        tree = etree.parse(urllib.urlopen(url))
+        tree = etree.parse(urllib.request.urlopen(url))
     except Exception:
         # Handle error gracefully.
         logging.getLogger("openlibrary").error("Failed to fetch blog feeds", exc_info=True)
@@ -682,17 +704,24 @@ def get_donation_include(include):
         param += '&ymd=' + web_input.ymd
 
     # Look for presence of cookie indicating banner has been closed
-    opener = urllib2.build_opener()
+    opener = urllib.request.build_opener()
     donation_param = web.cookies().get('donation')
     if donation_param:
         # Append a tuple with the cookie pair (*not* extraneous parentheses!)
-        opener.addheaders.append(('Cookie', urllib.urlencode({'donation': donation_param})))
+        opener.addheaders.append(('Cookie', urllib.parse.urlencode({'donation': donation_param})))
 
     html = ''
-    if include == 'true':
+    if include == 'true' and "dev" in web.ctx.features:
         try:
-            html = opener.open(url_banner_source + param, timeout=3).read()
-        except urllib2.URLError:
+            html += opener.open(url_banner_source + param, timeout=3).read().decode("utf-8")
+            # Donation banner is temporarily (Jan 2020) disabled on prod, but available on dev (so that it can be used
+            # for testing). To avoid it appearing like it's working, display a warning if it loads correctly that it's
+            # disabled on prod.
+            if '<div' in html or '<iframe' in html:
+                html = """
+                <center>WARNING: Donation banner disabled on prod; see <a href="https://github.com/internetarchive/openlibrary/issues/2853">GitHub #2853</a></center>
+                """ + html
+        except urllib.error.URLError:
             logging.getLogger("openlibrary").error('Could not load donation banner')
             return ''
     return html
@@ -703,6 +732,8 @@ def get_donation_include(include):
 def item_image(image_path, default=None):
     if image_path is None:
         return default
+    if image_path.startswith('https:'):
+        return image_path
     return "https:" + image_path
 
 @public
@@ -732,6 +763,16 @@ class Request:
         return ("https://" + url) if url else ''
 
 
+@public
+def render_once(key):
+    rendered = web.ctx.setdefault('render_once', {})
+    if key in rendered:
+        return False
+    else:
+        rendered[key] = True
+        return True
+
+
 def setup():
     """Do required initialization"""
     # monkey-patch get_markdown to use OL Flavored Markdown
@@ -749,7 +790,8 @@ def setup():
         'request': Request(),
         'logger': logging.getLogger("openlibrary.template"),
         'sum': sum,
-        'get_donation_include': get_donation_include
+        'get_donation_include': get_donation_include,
+        'websafe': web.websafe,
     })
 
     from openlibrary.core import helpers as h

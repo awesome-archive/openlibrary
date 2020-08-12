@@ -7,9 +7,11 @@ from openlibrary.catalog.marc.marc_xml import MarcXml
 from openlibrary.catalog.marc.marc_binary import MarcBinary, BadLength, BadMARC
 
 def return_test_marc_bin(url):
+    assert url, "return_test_marc_bin({})".format(url)
     return return_test_marc_data(url, "bin_input")
 
 def return_test_marc_xml(url):
+    assert url, "return_test_marc_xml({})".format(url)
     return return_test_marc_data(url, "xml_input")
 
 def return_test_marc_data(url, test_data_subdir="xml_input"):
@@ -94,9 +96,9 @@ class TestGetIA():
         result = get_ia.get_marc_record_from_ia(item)
         assert isinstance(result, MarcBinary), \
             "%s: expected instanceof MarcBinary, got %s" % (item, type(result))
-        print("%s:\n\tUNICODE: [%s]\n\tTITLE: %s" % (item,
-                                                     result.leader()[9],
-                                                     result.read_fields(['245']).next()[1].get_all_subfields().next()[1].encode('utf8')))
+        field_245 = next(result.read_fields(['245']))
+        title = next(field_245[1].get_all_subfields())[1].encode('utf8')
+        print("%s:\n\tUNICODE: [%s]\n\tTITLE: %s" % (item, result.leader()[9], title))
 
     @pytest.mark.parametrize('bad_marc', bad_marcs)
     def test_incorrect_length_marcs(self, bad_marc, monkeypatch):

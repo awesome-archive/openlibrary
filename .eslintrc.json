@@ -4,6 +4,7 @@
     "browser": true,
     "jquery": true
   },
+  "parser": "babel-eslint",
   "parserOptions": {
     "sourceType": "module",
     "ecmaVersion": 6
@@ -24,6 +25,9 @@
     "no-useless-escape": "error",
     "space-in-parens": "error",
     "vars-on-top": "error",
-    "template-curly-spacing": "error"
+    "template-curly-spacing": "error",
+    "quote-props": ["error", "as-needed"],
+    "keyword-spacing": ["error", { "before": true, "after": true } ],
+    "key-spacing": ["error", { "mode": "strict" }]
   }
 }

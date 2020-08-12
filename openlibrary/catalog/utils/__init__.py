@@ -12,30 +12,42 @@ except NameError:
     def cmp(x, y):  # Python 3
         return (x > y) - (x < y)
 
+
 re_date = map (re.compile, [
-    '(?P<birth_date>\d+\??)-(?P<death_date>\d+\??)',
-    '(?P<birth_date>\d+\??)-',
-    'b\.? (?P<birth_date>(?:ca\. )?\d+\??)',
-    'd\.? (?P<death_date>(?:ca\. )?\d+\??)',
-    '(?P<birth_date>.*\d+.*)-(?P<death_date>.*\d+.*)',
-    '^(?P<birth_date>[^-]*\d+[^-]+ cent\.[^-]*)$'])
+    r'(?P<birth_date>\d+\??)-(?P<death_date>\d+\??)',
+    r'(?P<birth_date>\d+\??)-',
+    r'b\.? (?P<birth_date>(?:ca\. )?\d+\??)',
+    r'd\.? (?P<death_date>(?:ca\. )?\d+\??)',
+    r'(?P<birth_date>.*\d+.*)-(?P<death_date>.*\d+.*)',
+    r'^(?P<birth_date>[^-]*\d+[^-]+ cent\.[^-]*)$'])
 
 re_ad_bc = re.compile(r'\b(B\.C\.?|A\.D\.?)')
 re_date_fl = re.compile('^fl[., ]')
-re_number_dot = re.compile('\d{2,}[- ]*(\.+)$')
-re_l_in_date = re.compile('(l\d|\dl)')
-re_end_dot = re.compile('[^ .][^ .]\.$', re.UNICODE)
+re_number_dot = re.compile(r'\d{2,}[- ]*(\.+)$')
+re_l_in_date = re.compile(r'(l\d|\dl)')
+re_end_dot = re.compile(r'[^ .][^ .]\.$', re.UNICODE)
 re_marc_name = re.compile('^(.*?),+ (.*)$')
 re_year = re.compile(r'\b(\d{4})\b')
 
-re_brackets = re.compile('^(.+)\[.*?\]$')
+re_brackets = re.compile(r'^(.+)\[.*?\]$')
+
 
 def key_int(rec):
     # extract the number from a key like /a/OL1234A
     return int(web.numify(rec['key']))
 
+
 def author_dates_match(a, b):
-    # check if the dates of two authors
+    """
+    Checks if the years of two authors match. Only compares years,
+    not names or keys. Works by returning False if any year specified in one record
+    does not match that in the other, otherwise True. If any one author does not have
+    dates, it will return True.
+
+    :param dict a: Author import dict {"name": "Some One", "birth_date": "1960"}
+    :param dict b: Author import dict {"name": "Some One"}
+    :rtype: bool
+    """
     for k in ['birth_date', 'death_date', 'date']:
         if k not in a or a[k] is None or k not in b or b[k] is None:
             continue
@@ -50,16 +62,26 @@ def author_dates_match(a, b):
         return False
     return True
 
+
 def flip_name(name):
-    # strip end dots like this: "Smith, John." but not like this: "Smith, J."
+    """
+    Flip author name about the comma, stripping the comma, and removing non
+    abbreviated end dots. Returns name with end dot stripped if no comma+space found.
+    The intent is to convert a Library indexed name to natural name order.
+
+    :param str name: e.g. "Smith, John." or "Smith, J."
+    :rtype: str
+    :return: e.g. "John Smith" or "J. Smith"
+    """
+
     m = re_end_dot.search(name)
     if m:
         name = name[:-1]
-
     if name.find(', ') == -1:
         return name
     m = re_marc_name.match(name)
     return m.group(2) + ' ' + m.group(1)
+
 
 def remove_trailing_number_dot(date):
     m = re_number_dot.search(date)
@@ -81,7 +103,9 @@ def fix_l_in_date(date):
         return date
     return re_l_in_date.sub(lambda m:m.group(1).replace('l', '1'), date)
 
-re_ca = re.compile('ca\.([^ ])')
+
+re_ca = re.compile(r'ca\.([^ ])')
+
 
 def parse_date(date):
     if re_date_fl.match(date):
@@ -109,7 +133,9 @@ def parse_date(date):
         i['birth_date'] = fix_l_in_date(i['birth_date'])
     return i
 
-re_cent = re.compile('^[\dl][^-]+ cent\.$')
+
+re_cent = re.compile(r'^[\dl][^-]+ cent\.$')
+
 
 def pick_first_date(dates):
     # this is to handle this case:
@@ -145,7 +171,7 @@ def match_with_bad_chars(a, b):
     if a == b:
         return True
     def drop(s):
-        return re_drop.sub('', s)
+        return re_drop.sub('', six.ensure_text(s))
     return drop(a) == drop(b)
 
 def accent_count(s):
@@ -199,13 +225,13 @@ def strip_count(counts):
     for i, j in counts:
         foo.setdefault(i.rstrip('.').lower() if isinstance(i, six.string_types) else i, []).append((i, j))
     ret = {}
-    for k, v in foo.iteritems():
+    for k, v in foo.items():
         m = max(v, key=lambda x: len(x[1]))[0]
         bar = []
         for i, j in v:
             bar.extend(j)
         ret[m] = bar
-    return sorted(ret.iteritems(), cmp=lambda x,y: cmp(len(y[1]), len(x[1]) ))
+    return sorted(ret.items(), key=lambda x: len(x[1]), reverse=True)
 
 def fmt_author(a):
     if 'birth_date' in a or 'death_date' in a:
@@ -222,7 +248,17 @@ def get_title(e):
         title = e['title']
     return title
 
+
 def mk_norm(s):
+    """
+    Normalizes titles and strips ALL spaces and small words
+    to aid with string comparisons of two titles.
+
+    :param str s: A book title to normalize and strip.
+    :rtype: str
+    :return: a lowercase string with no spaces, containg the main words of the title.
+    """
+
     m = re_brackets.match(s)
     if m:
         s = m.group(1)
@@ -234,6 +270,7 @@ def mk_norm(s):
         norm = norm[2:]
     return norm.replace(' ', '')
 
+
 def error_mail(msg_from, msg_to, subject, body):
     assert isinstance(msg_to, list)
     msg = 'From: %s\nTo: %s\nSubject: %s\n\n%s' % (msg_from, ', '.join(msg_to), subject, body)
@@ -241,22 +278,4 @@ def error_mail(msg_from, msg_to, subject, body):
     import smtplib
     server = smtplib.SMTP('mail.archive.org')
     server.sendmail(msg_from, msg_to, msg)
-    server.quit()
-
-def bad_marc_alert(ia):
-    from pprint import pformat
-    msg_from = 'load_scribe@archive.org'
-    msg_to = 'edward@archive.org'
-    msg = '''\
-From: %s
-To: %s
-Subject: bad MARC: %s
-
-bad MARC: %s
-
-''' % (msg_from, msg_to, ia, ia)
-
-    import smtplib
-    server = smtplib.SMTP('mail.archive.org')
-    server.sendmail(msg_from, [msg_to], msg)
     server.quit()

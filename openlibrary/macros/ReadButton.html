@@ -1,0 +1,31 @@
+$def with(ocaid, borrow=False, listen=False, loan=None, label='')
+
+$if (borrow and not loan):
+  $ action = "borrow"
+  $ label = label or _("Borrow")
+  $ title = _("Borrow ebook from Internet Archive")
+$else:
+  $ action = "read"
+  $ label = _("Read")
+  $ title = _("Read ebook from Internet Archive")
+
+$ stream_url = "/borrow/ia/%s?ref=ol" % ocaid
+
+<div class="cta-button-group">
+  <a href="$(stream_url)" title="$title" id="$(action)_ebook"
+     $if loan:
+       data-userid="$(loan['userid'])"
+     $elif borrow:
+       data-ol-link-track="CTAClick|Borrow"
+     $else:
+       data-ol-link-track="CTAClick|Read"
+     class="cta-btn cta-btn--available">$label</a>
+  $if listen:
+    <a href="$(stream_url)&_autoReadAloud=show"
+       title="$title using Read Aloud"
+       data-ol-link-track="CTAClick|$(action.capitalize())Listen"
+       class="cta-btn cta-btn--available">
+      <span class="btn-icon read-aloud"></span>
+      <span class="btn-label">$_('Listen')</span>
+    </a>
+</div>

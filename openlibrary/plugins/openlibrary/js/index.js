@@ -1,93 +1,129 @@
-import { validateEmail, validatePassword } from './account.js';
+import 'jquery';
+import 'jquery-migrate';
+import 'jquery-validation';
+// npm jquery-ui@1.12.1 package does not match the one we have here, so for now we load from vendor
+import '../../../../vendor/js/jquery-ui/jquery-ui-1.12.1.min.js';
+// For dialog boxes (e.g. add to list)
+import '../../../../vendor/js/colorbox/1.5.14.js';
+// jquery.form#2.36 not on npm, no longer getting worked on
+import '../../../../vendor/js/jquery-form/jquery.form.js';
+// jquery-autocomplete#1.1 with modified
+import '../../../../vendor/js/jquery-autocomplete/jquery.autocomplete-modified.js';
 import autocompleteInit from './autocomplete';
+// Used only by the openlibrary/templates/books/edit/addfield.html template
 import addNewFieldInit from './add_new_field';
 import automaticInit from './automatic';
-import { getAvailabilityV2,
-    updateBookAvailability, updateWorkAvailability } from './availability';
 import bookReaderInit from './bookreader_direct';
-import Carousel from './carousels';
 import { ungettext, ugettext,  sprintf } from './i18n';
-// Load jQuery plugins
-import './jquery.columnize';
-import './jquery.dataTables';
-import './jquery.hoverIntent';
-import './jquery.jTruncate';
 import addFadeInFunctionsTojQuery from './jquery.customFade';
-import fadeToggle from './jquery.fadeToggle';
 import jQueryRepeat from './jquery.repeat';
-import './jquery.scrollTo';
 import { enumerate, htmlquote, websafe, foreach, join, len, range } from './jsdef';
-// Note this import will also load various jQuery plugins.
-// (jQuery.ScrollTo, jquery.hoverIntent, jquery.dataTables, dataTableExt,
-// highlight, removeHighlight, jTruncate, columnize)
-import { plot_minigraph, plot_tooltip_graph } from './plot';
-import removeHighlight from './removeHighlight';
-import highlight from './highlight';
 import initAnalytics from './ol.analytics';
-// Also pulls in jQuery.fn.exists
-import init, { closePop, bookCovers, isScrolledIntoView } from './ol.js';
+import init from './ol.js';
 import * as Browser from './Browser';
 import { commify } from './python';
-import { Subject, urlencode, renderTag, slice } from './subjects';
+import { Subject, urlencode, slice } from './subjects';
 import Template from './template.js';
-// Add $.fn.focusNextInputField, $.fn.ol_confirm_dialog, $.fn.tap
-import { closePopup, initShowPasswords, truncate, cond } from './utils';
+// Add $.fn.focusNextInputField
+import { closePopup, truncate, cond } from './utils';
 import initValidate from './validate';
 import '../../../../static/css/js-all.less';
+// polyfill Promise support for IE11
+import Promise from 'promise-polyfill';
+import { confirmDialog, initDialogs } from './dialog';
+import initTabs from './tabs.js';
 
 // Eventually we will export all these to a single global ol, but in the mean time
 // we add them to the window object for backwards compatibility.
-window.bookCovers = bookCovers;
-window.closePop = closePop;
+// closePopup used in openlibrary/templates/covers/saved.html
 window.closePopup = closePopup;
 window.commify = commify;
 window.cond = cond;
 window.enumerate = enumerate;
 window.foreach = foreach;
-window.getAvailabilityV2 = getAvailabilityV2;
-window.isScrolledIntoView = isScrolledIntoView;
 window.htmlquote = htmlquote;
 window.len = len;
-window.plot_tooltip_graph = plot_tooltip_graph;
-window.plot_minigraph = plot_minigraph;
 window.range = range;
-window.renderTag = renderTag;
 window.slice = slice;
 window.sprintf = sprintf;
 window.truncate = truncate;
-window.updateBookAvailability = updateBookAvailability;
-window.updateWorkAvailability = updateWorkAvailability;
 window.urlencode = urlencode;
-window.validateEmail = validateEmail;
-window.validatePassword = validatePassword;
 window.websafe = websafe;
 window._ = ugettext;
 window.ungettext = ungettext;
 window.uggettext = ugettext;
 
 window.Browser = Browser;
-window.Carousel = Carousel;
 window.Subject = Subject;
 window.Template = Template;
 
 // Extend existing prototypes
 String.prototype.join = join;
 
-jQuery.fn.exists = function(){return jQuery(this).length>0;}
-jQuery.fn.removeHighlight = removeHighlight;
-jQuery.fn.highlight = highlight;
-jQuery.fn.fadeToggle = fadeToggle;
+window.jQuery = jQuery;
+window.$ = jQuery;
+
+window.Promise = Promise;
 
 // Initialise some things
-$(function () {
+jQuery(function () {
+    const $markdownTextAreas = $('textarea.markdown');
+    // Live NodeList is cast to static array to avoid infinite loops
+    const $carouselElements = $('.carousel--progressively-enhanced');
+    initDialogs();
+    // expose ol_confirm_dialog method
+    $.fn.ol_confirm_dialog = confirmDialog;
+    initTabs($('#tabsAddbook,#tabsAddauthor,.tabs:not(.ui-tabs)'));
     initValidate($);
     autocompleteInit($);
     addNewFieldInit($);
     automaticInit($);
+    // wmd editor
+    if ($markdownTextAreas.length) {
+        import(/* webpackChunkName: "markdown-editor" */ './markdown-editor')
+            .then((module) => module.initMarkdownEditor($markdownTextAreas));
+    }
     bookReaderInit($);
     addFadeInFunctionsTojQuery($);
     jQueryRepeat($);
     initAnalytics($);
     init($);
-    initShowPasswords($);
+    // conditionally load functionality based on what's in the page
+    if (document.getElementsByClassName('editions-table--progressively-enhanced').length) {
+        import(/* webpackChunkName: "editions-table" */ './editions-table')
+            .then(module => module.initEditionsTable());
+    }
+    // conditionally load real time signup functionality based on class in the page
+    if (document.getElementsByClassName('olform create validate').length) {
+        import('./realtime_account_validation.js')
+            .then(module => module.initRealTimeValidation());
+    }
+    // conditionally load readmore button based on class in the page
+    if (document.getElementsByClassName('read-more-button').length) {
+        import(/* webpackChunkName: "readmore" */ './readmore.js')
+            .then(module => module.initReadMoreButton());
+    }
+    // conditionally loads Goodreads import based on class in the page
+    if (document.getElementsByClassName('import-table').length) {
+        import('./goodreads_import.js')
+            .then(module => module.initGoodreadsImport());
+    }
+    // Enable any carousels in the page
+    if ($carouselElements.length) {
+        import(/* webpackChunkName: "carousel" */ './carousel')
+            .then((module) => module.init($carouselElements));
+    }
+    if ($('script[type="text/json+graph"]').length > 0) {
+        import(/* webpackChunkName: "graphs" */ './graphs')
+            .then((module) => module.init());
+    }
+
+    if (window.READINGLOG_STATS_CONFIG) {
+        import(/* webpackChunkName: "readinglog_stats" */ './readinglog_stats')
+            .then(module => module.init(window.READINGLOG_STATS_CONFIG));
+    }
+
+    $(document).on('click', '.slide-toggle', function () {
+        $(`#${$(this).attr('aria-controls')}`).slideToggle();
+    });
 });

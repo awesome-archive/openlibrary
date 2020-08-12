@@ -1,7 +1,7 @@
-### Description
-<!-- What does this PR achieve? [feature|hotfix|fix|refactor] -->
-
+<!-- What issue does this PR close? -->
 Closes #
+
+<!-- What does this PR achieve? [feature|hotfix|fix|refactor] -->
 
 ### Technical
 <!-- What should be noted about the implementation? -->
@@ -9,5 +9,8 @@ Closes #
 ### Testing
 <!-- Steps for reviewer to reproduce/verify what this PR does/fixes. -->
 
-### Evidence
+### Screenshot
 <!-- If this PR touches UI, please post evidence (screenshots) of it behaving correctly. -->
+
+### Stakeholders
+<!-- @ tag stakeholders of this bug -->

@@ -11,7 +11,7 @@ import datetime
 import web
 import yaml
 
-import numbers
+from openlibrary.admin import numbers
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,6 @@ def setup_ol_config(openlibrary_config_file):
     """
     import infogami
     from infogami import config
-    from infogami.utils import delegate
 
     config.plugin_path += ['openlibrary.plugins']
     config.site = "openlibrary.org"

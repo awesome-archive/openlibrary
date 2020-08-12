@@ -4,16 +4,13 @@
 #
 
 BUILD=static/build
-
-PYBUNDLE_URL=http://www.archive.org/download/ol_vendor/openlibrary.pybundle
-OL_VENDOR=http://www.archive.org/download/ol_vendor
-SOLR_VERSION=apache-solr-1.4.0
 ACCESS_LOG_FORMAT='%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s"'
 GITHUB_EDITOR_WIDTH=127
+FLAKE_EXCLUDE=./.*,scripts/20*,vendor/*,node_modules/*
 
 define lessc
-	echo Compressing page-$(1).less; \
-	lessc -x static/css/$(1).less $(BUILD)/$(1).css
+	echo Compressing $(1).less; \
+	npx lessc static/css/$(1).less $(BUILD)/$(1).css --clean-css="--s1 --advanced --compatibility=ie8"
 endef
 
 # Use python from local env if it exists or else default to python in the path.
@@ -31,16 +28,24 @@ css:
 
 js:
 	mkdir -p $(BUILD)
-	bash static/js/vendor.jsh > $(BUILD)/vendor-v2.js
+	rm -f $(BUILD)/*.js $(BUILD)/*.js.map
 	npm run build-assets:webpack
+	# This adds FSF licensing for AGPLv3 to our js (for librejs)
+	for js in $(BUILD)/*.js; do \
+		echo "// @license magnet:?xt=urn:btih:0b31508aeb0634b347b8270c7bee4d411b5d4109&dn=agpl-3.0.txt AGPL-v3.0" | cat - $$js > /tmp/js && mv /tmp/js $$js; \
+		echo "\n// @license-end"  >> $$js; \
+	done
 
 i18n:
 	$(PYTHON) ./scripts/i18n-messages compile
 
-git:
+git:	
+#Do not run these on DockerHub since it recursively clones all the repos before build initiates
+ifeq ($(DOCKER_HUB),FALSE)
 	git submodule init
 	git submodule sync
 	git submodule update
+endif
 
 clean:
 	rm -rf $(BUILD)
@@ -49,59 +54,37 @@ distclean:
 	git clean -fdx
 	git submodule foreach git clean -fdx
 
-venv:
-	@echo "** setting up virtualenv **"
-	mkdir -p var/cache/pip
-	virtualenv env
-	./env/bin/pip install --download-cache var/cache/pip $(OL_VENDOR)/openlibrary.pybundle
-
-install_solr:
-	@echo "** installing solr **"
-	mkdir -p var/lib/solr var/cache usr/local
-	wget -c $(OL_VENDOR)/$(SOLR_VERSION).tgz -O var/cache/$(SOLR_VERSION).tgz
-	cd usr/local && tar xzf ../../var/cache/$(SOLR_VERSION).tgz && ln -fs $(SOLR_VERSION) solr
-
-setup_coverstore:
-	@echo "** setting up coverstore **"
-	$(PYTHON) scripts/setup_dev_instance.py --setup-coverstore
-
-setup_ol: git
-	@echo "** setting up openlibrary webapp **"
-	$(PYTHON) scripts/setup_dev_instance.py --setup-ol
-	@# When bootstrapping, PYTHON will not be env/bin/python as env dir won't be there when make is invoked.
-	@# Invoking make again to pick the right PYTHON.
-	make all
-
-bootstrap: venv install_solr setup_coverstore setup_ol
-
-run:
-	$(PYTHON) scripts/openlibrary-server conf/openlibrary.yml
-
 load_sample_data:
 	@echo "loading sample docs from openlibrary.org website"
 	$(PYTHON) scripts/copydocs.py --list /people/anand/lists/OL1815L
 	curl http://localhost:8080/_dev/process_ebooks # hack to show books in returncart
 
-destroy:
-	@echo Destroying the dev instance.
-	-dropdb coverstore
-	-dropdb openlibrary
-	rm -rf var usr env
-
 reindex-solr:
-	psql openlibrary -t -c 'select key from thing' | sed 's/ *//' | grep '^/books/' | PYTHONPATH=$(PWD) xargs python openlibrary/solr/update_work.py -s http://0.0.0.0/ -c conf/openlibrary.yml --data-provider=legacy
-	psql openlibrary -t -c 'select key from thing' | sed 's/ *//' | grep '^/authors/' | PYTHONPATH=$(PWD) xargs python openlibrary/solr/update_work.py -s http://0.0.0.0/ -c conf/openlibrary.yml --data-provider=legacy
+	su postgres -c "psql openlibrary -t -c 'select key from thing' | sed 's/ *//' | grep '^/books/' | PYTHONPATH=$(PWD) xargs python openlibrary/solr/update_work.py -s http://0.0.0.0/ -c conf/openlibrary.yml --data-provider=legacy"
+	su postgres -c "psql openlibrary -t -c 'select key from thing' | sed 's/ *//' | grep '^/authors/' | PYTHONPATH=$(PWD) xargs python openlibrary/solr/update_work.py -s http://0.0.0.0/ -c conf/openlibrary.yml --data-provider=legacy"
+
+lint-diff:
+	git diff master -U0 | ./scripts/flake8-diff.sh
 
 lint:
 	# stop the build if there are Python syntax errors or undefined names
-	$(PYTHON) -m flake8 . --count --exclude=./.*,scripts/20*,vendor/*,*/acs4.py  --select=E9,F63,F7,F822,F823 --show-source --statistics
-	# TODO: Add --select=F821 below into the line above as soon as the Undefined Name issues have been fixed
-	$(PYTHON) -m flake8 . --exit-zero --count --exclude=./.*,scripts/20*,vendor/*  --select=F821 --show-source --statistics
+	$(PYTHON) -m flake8 . --count --exclude=$(FLAKE_EXCLUDE) --select=E9,F63,F7,F82 --show-source --statistics
 ifndef CONTINUOUS_INTEGRATION
 	# exit-zero treats all errors as warnings, only run this in local dev while fixing issue, not CI as it will never fail.
-	$(PYTHON) -m flake8 . --count --exclude=./.*,scripts/20*,vendor*,node_modules/* --exit-zero --max-complexity=10 --max-line-length=$(GITHUB_EDITOR_WIDTH) --statistics
+	$(PYTHON) -m flake8 . --count --exclude=$(FLAKE_EXCLUDE) --exit-zero --max-complexity=10 --max-line-length=$(GITHUB_EDITOR_WIDTH) --statistics
 endif
 
-test:
-	npm test
+test-css:
+	npm run test:css
+
+test-js:
+	npm run test:js
+
+test-unit:
+	npm run test:unit
+
+test-py:
 	pytest openlibrary/tests openlibrary/mocks openlibrary/olbase openlibrary/plugins openlibrary/utils openlibrary/catalog openlibrary/coverstore scripts/tests
+
+test: 
+	npm run test && make test-py

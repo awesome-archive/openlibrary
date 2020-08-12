@@ -1,15 +1,16 @@
 """Handle book cover/author photo upload.
 """
-import urllib
-import urllib2
 import web
 import simplejson
 
 from infogami.utils import delegate
 from infogami.utils.view import safeint
-from utils import get_coverstore_url, render_template
-from models import Image
 from openlibrary import accounts
+from openlibrary.plugins.upstream.models import Image
+from openlibrary.plugins.upstream.utils import get_coverstore_url, render_template
+
+from six.moves import urllib
+
 
 def setup():
     pass
@@ -70,9 +71,9 @@ class add_cover(delegate.page):
             upload_url = "http:" + upload_url
 
         try:
-            response = urllib2.urlopen(upload_url, urllib.urlencode(params))
+            response = urllib.request.urlopen(upload_url, urllib.parse.urlencode(params))
             out = response.read()
-        except urllib2.HTTPError as e:
+        except urllib.error.HTTPError as e:
             out = {'error': e.read()}
 
         return web.storage(simplejson.loads(out))
