@@ -1,3 +1,6 @@
+import 'jquery-validation';
+import { ungettext, ugettext } from './i18n';
+
 /**
  * jQuery plugin to add form validations.
  *
@@ -12,9 +15,7 @@
  *          <input type="submit" name="submit" value="Register"/>
  *      </form>
  */
-export default function initValidate() {
-
-
+export function init() {
     // validate publish-date to make sure the date is not in future
     // used in templates/books/add.html
     jQuery.validator.addMethod('publish-date', function(value) {
@@ -27,10 +28,17 @@ export default function initValidate() {
     'Are you sure that\'s the published date?'
     );
 
+    // validate title to make sure it contains at least one non-whitespace
+    // character (otherwise it will appear blank)
+    // used in templates/books/add.html
+    jQuery.validator.addMethod('title', function(value) {
+        return /\S/.test(value);
+    },
+    '',
+    );
+
     $.validator.messages.required = '';
-    // _ is defined in openlibrary\plugins\openlibrary\js\i18n.js
-    // eslint-disable-next-line no-undef
-    $.validator.messages.email = _('Are you sure that\'s an email address?');
+    $.validator.messages.email = ugettext('Are you sure that\'s an email address?');
 
 
     $.fn.ol_validate = function(options) {
@@ -42,8 +50,6 @@ export default function initValidate() {
                 var errors = validator.numberOfInvalids();
                 var message;
                 if (errors) {
-                    // ungettext is defined in openlibrary\plugins\openlibrary\js\i18n.js
-                    // eslint-disable-next-line no-undef
                     message = ungettext(
                         'Hang on... you missed a bit. It\'s highlighted below.',
                         'Hang on...you missed some fields. They\'re highlighted below.',
@@ -72,4 +78,6 @@ export default function initValidate() {
         $(this).validate($.extend(defaults, options));
     };
 
+    // validate forms
+    $('form.validate').ol_validate();
 }

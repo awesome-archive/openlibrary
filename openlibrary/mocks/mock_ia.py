@@ -1,30 +1,33 @@
 """Mock of openlibrary.core.ia module.
 """
+
 import pytest
+
 from openlibrary.core import ia
+
 
 @pytest.fixture
 def mock_ia(request, monkeypatch):
     """pytest funcarg to mock openlibrary.core.ia module.
 
-        from openlibrary.core import ia
+    from openlibrary.core import ia
 
-        def test_ia(mock_ia):
-            assert ia.get_meta_xml("foo") == {}
+    def test_ia(mock_ia):
+        assert ia.get_metadata("foo") == {}
 
-            mock_ia.set_meta_xml("foo", {"collection": ["a", "b"]})
-            assert ia.get_meta_xml("foo") == {"collection": ["a", "b"]}
+        mock_ia.set_metadata("foo", {"collection": ["a", "b"]})
+        assert ia.get_metadata("foo") == {"collection": ["a", "b"]}
     """
-    metaxml = {}
+    metadata = {}
 
     class IA:
-        def set_meta_xml(self, itemid, meta):
-            metaxml[itemid] = meta
+        def set_metadata(self, itemid, meta):
+            metadata[itemid] = meta
 
-        def get_meta_xml(self, itemid):
-            return metaxml.get(itemid, {})
+        def get_metadata(self, itemid):
+            return metadata.get(itemid, {})
 
     mock_ia = IA()
-    monkeypatch.setattr(ia, "get_meta_xml", ia.get_meta_xml)
+    monkeypatch.setattr(ia, 'get_metadata', ia.get_metadata)
 
     return mock_ia

@@ -9,6 +9,7 @@ $if format == 'raw':
 $ get_source_record = render_template("history/sources").get_source_record
 $ source_record = get_source_record("%s:%s:%s" % (filename, begin, length))
 $ title = "MARC Record from " + source_record.source_name
+$ next_url = "../%s:%s:5" % (filename, begin + length)
 
 $var title: $title
 
@@ -24,15 +25,15 @@ $var title: $title
         <table class="meta">
             <tbody>
                 <tr>
-                    <td class="title"><span class="title">Record ID</span></td>
+                    <td class="title"><span class="title">$_("Record ID")</span></td>
                     <td><span class="object">$source_record.id</span></td>
                 </tr>
                 <tr>
-                    <td class="title"><span class="title">Source</span></td>
+                    <td class="title"><span class="title">$_("Source")</span></td>
                     <td><span class="object"><a href="$source_record.source_url">$source_record.source_name</a></span></td>
                 </tr>
                 <tr>
-                    <td class="title"><span class="title">Download Link</span></td>
+                    <td class="title"><span class="title">$_("Download Link")</span></td>
                     <td><span class="object"><a href="$source_record.url?format=raw">$source_record.url?format=raw</a></span></td>
                 </tr>
             </tbody>
@@ -42,6 +43,10 @@ $var title: $title
     $if not record:
         <p>$_("Invalid MARC record.")</p>
     $else:
-        <p><b>LEADER:</b> <code>$record.leader</code><br/>
+        <p><b>$_("LEADER:")</b> <code>$record.leader</code><br>
         $:record.html()</p>
+   $if ctx.user and (ctx.user.is_admin() or ctx.user.is_super_librarian()):
+       <div>
+          <a href="$next_url" class="slick-next adminOnly right">$_("Next")</a>
+       </div>
 </div>

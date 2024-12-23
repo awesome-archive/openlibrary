@@ -1,60 +1,97 @@
-"""Python library for accessing Solr.
-"""
-import urlparse
-import urllib
-import urllib2
-import re
-import web
-import simplejson
+"""Python library for accessing Solr"""
+
 import logging
+import re
+from collections.abc import Callable, Iterable
+from typing import TypeVar
+from urllib.parse import urlencode, urlsplit
+
+import requests
+import web
 
 logger = logging.getLogger("openlibrary.logger")
 
-def urlencode(d, doseq=False):
-    """There is a bug in urllib when used with unicode data.
 
-        >>> d = {"q": u"\u0C05"}
-        >>> urllib.urlencode(d)
-        'q=%E0%B0%85'
-        >>> urllib.urlencode(d, doseq=True)
-        'q=%3F'
+T = TypeVar('T')
 
-    This function encodes all the unicode strings in utf-8 before passing them to urllib.
-    """
-    def utf8(d):
-        if isinstance(d, dict):
-            return dict((utf8(k), utf8(v)) for k, v in d.iteritems())
-        elif isinstance(d, list):
-            return [utf8(v) for v in d]
-        else:
-            return web.safestr(d)
-
-    return urllib.urlencode(utf8(d), doseq=doseq)
 
 class Solr:
     def __init__(self, base_url):
+        """
+        :param base_url: The base url of the solr server/collection. E.g. http://localhost:8983/solr/openlibrary
+        """
         self.base_url = base_url
-        self.host = urlparse.urlsplit(self.base_url)[1]
+        self.host = urlsplit(self.base_url)[1]
+        self.session = requests.Session()
 
     def escape(self, query):
         r"""Escape special characters in the query string
 
-            >>> solr = Solr("")
-            >>> solr.escape("a[b]c")
-            'a\\[b\\]c'
+        >>> solr = Solr("")
+        >>> solr.escape("a[b]c")
+        'a\\[b\\]c'
         """
         chars = r'+-!(){}[]^"~*?:\\'
         pattern = "([%s])" % re.escape(chars)
         return web.re_compile(pattern).sub(r'\\\1', query)
 
-    def select(self, query, fields=None, facets=None,
-               rows=None, start=None,
-               doc_wrapper=None, facet_wrapper=None,
-               **kw):
+    def get(
+        self,
+        key: str,
+        fields: list[str] | None = None,
+        doc_wrapper: Callable[[dict], T] = web.storage,
+    ) -> T | None:
+        """Get a specific item from solr"""
+        logger.info(f"solr /get: {key}, {fields}")
+        resp = self.session.get(
+            f"{self.base_url}/get",
+            # It's unclear how field=None is getting in here; a better fix would be at the source.
+            params={
+                'id': key,
+                **(
+                    {'fl': ','.join([field for field in fields if field])}
+                    if fields
+                    else {}
+                ),
+            },
+        ).json()
+
+        # Solr returns {doc: null} if the record isn't there
+        return doc_wrapper(resp['doc']) if resp['doc'] else None
+
+    def get_many(
+        self,
+        keys: Iterable[str],
+        fields: Iterable[str] | None = None,
+        doc_wrapper: Callable[[dict], T] = web.storage,
+    ) -> list[T]:
+        if not keys:
+            return []
+        logger.info(f"solr /get: {keys}, {fields}")
+        resp = self.session.post(
+            f"{self.base_url}/get",
+            data={
+                'ids': ','.join(keys),
+                **({'fl': ','.join(fields)} if fields else {}),
+            },
+        ).json()
+        return [doc_wrapper(doc) for doc in resp['response']['docs']]
+
+    def select(
+        self,
+        query,
+        fields=None,
+        facets=None,
+        rows=None,
+        start=None,
+        doc_wrapper=None,
+        facet_wrapper=None,
+        **kw,
+    ):
         """Execute a solr query.
 
-        query can be a string or a dicitonary. If query is a dictionary, query
-        is constucted by concatinating all the key-value pairs with AND condition.
+        query can be a string or a dictionary. If query is a dictionary, query
+        is constructed by concatenating all the key-value pairs with AND condition.
         """
         params = {'wt': 'json'}
 
@@ -79,33 +116,48 @@ class Solr:
                 if isinstance(f, dict):
                     name = f.pop("name")
                     for k, v in f.items():
-                        params["f.%s.facet.%s" % (name, k)] = v
+                        params[f"f.{name}.facet.{k}"] = v
                 else:
                     name = f
                 params['facet.field'].append(name)
 
+        json_data = self.raw_request(
+            'select',
+            urlencode(params, doseq=True),
+        ).json()
+        return self._parse_solr_result(
+            json_data, doc_wrapper=doc_wrapper, facet_wrapper=facet_wrapper
+        )
+
+    def raw_request(self, path_or_url: str, payload: str) -> requests.Response:
+        if path_or_url.startswith("http"):
+            # TODO: Should this only take a path, not a full url? Would need to
+            # update worksearch.code.execute_solr_query accordingly.
+            url = path_or_url
+        else:
+            url = f'{self.base_url}/{path_or_url.lstrip("/")}'
+
         # switch to POST request when the payload is too big.
-        # XXX: would it be a good idea to swithc to POST always?
-        payload = urlencode(params, doseq=True)
-        url = self.base_url + "/select"
+        # XXX: would it be a good idea to switch to POST always?
         if len(payload) < 500:
-            url = url + "?" + payload
+            sep = '&' if '?' in url else '?'
+            url = url + sep + payload
             logger.info("solr request: %s", url)
-            data = urllib2.urlopen(url, timeout=3).read()
+            return self.session.get(url, timeout=10)
         else:
             logger.info("solr request: %s ...", url)
-            request = urllib2.Request(url, payload, {"Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"})
-            data = urllib2.urlopen(request, timeout=3).read()
-        return self._parse_solr_result(
-            simplejson.loads(data),
-            doc_wrapper=doc_wrapper,
-            facet_wrapper=facet_wrapper)
+            headers = {
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+            }
+            return self.session.post(url, data=payload, headers=headers, timeout=10)
 
     def _parse_solr_result(self, result, doc_wrapper, facet_wrapper):
         response = result['response']
 
         doc_wrapper = doc_wrapper or web.storage
-        facet_wrapper = facet_wrapper or (lambda name, value, count: web.storage(locals()))
+        facet_wrapper = facet_wrapper or (
+            lambda name, value, count: web.storage(locals())
+        )
 
         d = web.storage()
         d.num_found = response['numFound']
@@ -114,7 +166,9 @@ class Solr:
         if 'facet_counts' in result:
             d.facets = {}
             for k, v in result['facet_counts']['facet_fields'].items():
-                d.facets[k] = [facet_wrapper(k, value, count) for value, count in web.group(v, 2)]
+                d.facets[k] = [
+                    facet_wrapper(k, value, count) for value, count in web.group(v, 2)
+                ]
 
         if 'highlighting' in result:
             d.highlighting = result['highlighting']
@@ -130,9 +184,9 @@ class Solr:
             return v.replace('"', r'\"').replace("(", "\\(").replace(")", "\\)")
 
         def escape_value(v):
-            if isinstance(v, tuple): # hack for supporting range
-                return "[%s TO %s]" % (escape(v[0]), escape(v[1]))
-            elif isinstance(v, list): # one of
+            if isinstance(v, tuple):  # hack for supporting range
+                return f"[{escape(v[0])} TO {escape(v[1])}]"
+            elif isinstance(v, list):  # one of
                 return "(%s)" % " OR ".join(escape_value(x) for x in v)
             else:
                 return '"%s"' % escape(v)
@@ -143,11 +197,13 @@ class Solr:
                 op = "AND"
             op = " " + op + " "
 
-            q = op.join('%s:%s' % (k, escape_value(v)) for k, v in query.items())
+            q = op.join(f'{k}:{escape_value(v)}' for k, v in query.items())
         else:
             q = query
         return q
 
+
 if __name__ == '__main__':
     import doctest
+
     doctest.testmod()

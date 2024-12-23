@@ -1,14 +1,19 @@
-import os
-import pytest
 import re
+
+import pytest
 import web
+
 from infogami import config
-from infogami.infobase import client
 from infogami.utils import delegate
 
+try:  # newer versions of web.py
+    from web.browser import AppBrowser
+except ImportError:  # older versions of web.py
+    from web import AppBrowser
+
+from openlibrary.mocks.mock_infobase import MockConnection, mock_site
 from openlibrary.plugins import ol_infobase
 
-from mock_infobase import mock_site, MockConnection
 
 @pytest.fixture
 def ol(request):
@@ -22,6 +27,7 @@ def ol(request):
     """
     return OL(request)
 
+
 @web.memoize
 def load_plugins():
     config.plugin_path = ["openlibrary.plugins", ""]
@@ -29,20 +35,23 @@ def load_plugins():
 
     delegate._load()
 
+
 class EMail(web.storage):
     def extract_links(self):
         """Extracts link from the email message."""
         return re.findall(r"http://[^\s]*", self.message)
 
-class OLBrowser(web.AppBrowser):
+
+class OLBrowser(AppBrowser):
     def get_text(self, e=None, name=None, **kw):
         if name or kw:
             e = self.get_soup().find(name=name, **kw)
-        return web.AppBrowser.get_text(self, e)
+        return AppBrowser.get_text(self, e)
+
 
 class OL:
-    """Mock OL object for all tests.
-    """
+    """Mock OL object for all tests."""
+
     @pytest.fixture
     def __init__(self, request, monkeypatch):
         self.request = request
@@ -61,7 +70,7 @@ class OL:
         return OLBrowser(delegate.app)
 
     def setup_config(self):
-        config.from_address = "Open Library <noreply@openlibrary.org>"
+        config.from_address = "Open Library <noreply@archive.org>"
 
     def _load_plugins(self, request):
         def create_site():
@@ -79,12 +88,15 @@ class OL:
     def _mock_sendmail(self, request):
         self.sentmail = None
 
-        def sendmail(from_address, to_address, subject, message, headers={}, **kw):
-            self.sentmail = EMail(kw,
+        def sendmail(from_address, to_address, subject, message, headers=None, **kw):
+            headers = headers or {}
+            self.sentmail = EMail(
+                kw,
                 from_address=from_address,
                 to_address=to_address,
                 subject=subject,
                 message=message,
-                headers=headers)
+                headers=headers,
+            )
 
         self.monkeypatch.setattr(web, "sendmail", sendmail)

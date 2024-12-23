@@ -1,45 +1,12 @@
-// http://jqueryminute.com/set-focus-to-the-next-input-field-with-jquery/
-$.fn.focusNextInputField = function() {
-    return this.each(function() {
-        var fields = $(this).parents('form:eq(0),body').find(':input:visible');
-        var index = fields.index(this);
-        if (index > -1 && (index + 1) < fields.length) {
-            fields.eq(index + 1).focus();
-        }
-        return false;
-    });
-};
-
-// Confirm dialog with OL styles.
-$.fn.ol_confirm_dialog = function(callback, options) {
-    var _this = this;
-    var defaults = {
-        autoOpen: false,
-        width: 400,
-        modal: true,
-        resizable: false,
-        buttons: {
-            'Yes, I\'m sure': function() {
-                callback.apply(_this);
-            },
-            'No, cancel': function() {
-                $(_this).dialog('close');
-            }
-        }
-    };
-    options = $.extend(defaults, options);
-    this.dialog(options);
-}
-
-// Tap into jquery chain
-$.fn.tap = function(callback) {
-    callback(this);
-    return this;
-}
+/*
+These functions are used by jsdef.py
+They must be available in the global JS namespace
+See: https://github.com/internetarchive/openlibrary/pull/9180#issuecomment-2107911798
+*/
 
 // closes active popup
-// used in templates/covers/saved.html
 export function closePopup() {
+    // Note we don't import colorbox here, since it's on the parent
     parent.jQuery.fn.colorbox.close();
 }
 
@@ -52,7 +19,7 @@ export function truncate(text, limit) {
     }
 }
 
-// used in templates/admin/ip/view.html
+// used in openlibrary/templates/books/edit/excerpts.html
 export function cond(predicate, true_value, false_value) {
     if (predicate) {
         return true_value;
@@ -62,49 +29,33 @@ export function cond(predicate, true_value, false_value) {
     }
 }
 
-// showPasswords implemented by Lance
-export function initShowPasswords($) {
-    $.fn.extend({
-        showPasswords: function(f) {
-            return this.each(function() {
-                var c = function(a) {
-                    var b;
-                    a = $(a);
-                    b = $('<input type=\'text\' />');
-                    b.insertAfter(a).attr({
-                        'class': a.attr('class'),
-                        'style': a.attr('style')
-                    });
-                    return b
-                };
-                var d = function($this, $that) {
-                    $that.val($this.val())
-                };
-                var e = function() {
-                    if ($checkbox.is(':checked')) {
-                        d($this, $clone);
-                        $clone.show();
-                        $this.hide()
-                    } else {
-                        d($clone, $this);
-                        $clone.hide();
-                        $this.show()
-                    }
-                };
-                var $clone = c(this),
-                    $this = $(this),
-                    $checkbox = $(f);
-                $checkbox.click(function() {
-                    e()
-                });
-                $this.keyup(function() {
-                    d($this, $clone)
-                });
-                $clone.keyup(function() {
-                    d($clone, $this)
-                });
-                e()
-            })
+/**
+ * Removes children of each given element.
+ *
+ * @param  {...HTMLElement} elements
+ */
+export function removeChildren(...elements) {
+    for (const elem of elements) {
+        if (elem) {
+            while (elem.firstChild) {
+                elem.removeChild(elem.firstChild)
+            }
         }
-    })
+    }
+}
+
+// Function to add or update multiple query parameters
+export function updateURLParameters(params) {
+    // Get the current URL
+    const url = new URL(window.location.href);
+
+    // Iterate over the params object and update/add each parameter
+    for (const key in params) {
+        if (params.hasOwnProperty(key)) {
+            url.searchParams.set(key, params[key]);
+        }
+    }
+
+    // Use history.pushState to update the URL without reloading
+    window.history.pushState({ path: url.href }, '', url.href);
 }

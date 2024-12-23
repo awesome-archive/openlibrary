@@ -1,11 +1,16 @@
 """Utilities for rendering Graphite graphs.
 """
+
 import urllib
+
 import web
+
 from infogami import config
+
 
 def get_graphite_base_url():
     return config.get("graphite_base_url", "")
+
 
 class GraphiteGraph:
     """Representation of Graphite graph.
@@ -22,6 +27,7 @@ class GraphiteGraph:
         $g.add("stats.timers.ol.pageload.all.mean").apply("movingAverage", 20).alias("all")
         $:g.render()
     """
+
     def __init__(self):
         self.series_list = []
 
@@ -31,8 +37,7 @@ class GraphiteGraph:
         return s
 
     def get_queryparams(self, **options):
-        """Returns query params to be passed to the image URL for rendering this graph.
-        """
+        """Returns query params to be passed to the image URL for rendering this graph."""
         options["target"] = [s.name for s in self.series_list]
         return options
 
@@ -43,11 +48,12 @@ class GraphiteGraph:
 
             $:g.render(yLimit=100, width=300, height=400)
         """
-        return '<img src="%s/render/?%s"/>' % (get_graphite_base_url(), urllib.urlencode(self.get_queryparams(**options), doseq=True))
+        return f'<img src="{get_graphite_base_url()}/render/?{urllib.parse.urlencode(self.get_queryparams(**options), doseq=True)}"/>'
+
 
 class Series:
-    """One series in the GraphiteGraph.
-    """
+    """One series in the GraphiteGraph."""
+
     def __init__(self, name):
         self.name = name
 
@@ -56,12 +62,13 @@ class Series:
 
         :return: Returns self
         """
-        self.name = "%s(%s, %s)" % (funcname, self.name, ", ".join(repr(a) for a in args))
+        self.name = "{}({}, {})".format(
+            funcname, self.name, ", ".join(repr(a) for a in args)
+        )
         return self
 
     def alias(self, name):
-        """Shorthand for calling s.apply("alias", name)
-        """
+        """Shorthand for calling s.apply("alias", name)"""
         return self.apply("alias", name)
 
     def __repr__(self):
@@ -71,7 +78,10 @@ class Series:
         # Returning empty string to allow template use $g.add("foo") without printing anything.
         return ""
 
+
 def setup():
-    web.template.Template.globals.update({
-        'GraphiteGraph': GraphiteGraph,
-    })
+    web.template.Template.globals.update(
+        {
+            'GraphiteGraph': GraphiteGraph,
+        }
+    )

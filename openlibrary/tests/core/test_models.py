@@ -1,7 +1,7 @@
+import pytest
+
 from openlibrary.core import models
 
-# this should be moved to openlibrary.core
-from openlibrary.plugins.upstream.models import UnitParser
 
 class MockSite:
     def get(self, key):
@@ -10,9 +10,11 @@ class MockSite:
     def _get_backreferences(self, thing):
         return {}
 
+
 class MockLendableEdition(models.Edition):
     def get_ia_collections(self):
         return ['lendinglibrary']
+
 
 class MockPrivateEdition(models.Edition):
     def get_ia_collections(self):
@@ -21,11 +23,7 @@ class MockPrivateEdition(models.Edition):
 
 class TestEdition:
     def mock_edition(self, edition_class):
-        data = {
-            "key": "/books/OL1M",
-            "type": {"key": "/type/edition"},
-            "title": "foo"
-        }
+        data = {"key": "/books/OL1M", "type": {"key": "/type/edition"}, "title": "foo"}
         return edition_class(MockSite(), "/books/OL1M", data=data)
 
     def test_url(self):
@@ -49,26 +47,74 @@ class TestEdition:
         e = self.mock_edition(MockLendableEdition)
         assert not e.is_in_private_collection()
 
-    def test_can_borrow_cuz_not_in_private_collection(self):
+    def test_in_borrowable_collection_cuz_not_in_private_collection(self):
         e = self.mock_edition(MockLendableEdition)
-        assert e.can_borrow()
+        assert e.in_borrowable_collection()
 
     def test_is_in_private_collection(self):
         e = self.mock_edition(MockPrivateEdition)
         assert e.is_in_private_collection()
 
-    def test_can_not_borrow_cuz_in_private_collection(self):
+    def test_not_in_borrowable_collection_cuz_in_private_collection(self):
         e = self.mock_edition(MockPrivateEdition)
-        assert not e.can_borrow()
+        assert not e.in_borrowable_collection()
+
+    @pytest.mark.parametrize(
+        ["isbn_or_asin", "expected"],
+        [
+            ("1111111111", ("1111111111", "")),  # ISBN 10
+            ("9780747532699", ("9780747532699", "")),  # ISBN 13
+            ("B06XYHVXVJ", ("", "B06XYHVXVJ")),  # ASIN
+            ("b06xyhvxvj", ("", "B06XYHVXVJ")),  # Lower case ASIN
+            ("", ("", "")),  # Nothing at all.
+        ],
+    )
+    def test_get_isbn_or_asin(self, isbn_or_asin, expected) -> None:
+        e: models.Edition = self.mock_edition(MockPrivateEdition)
+        got = e.get_isbn_or_asin(isbn_or_asin)
+        assert got == expected
+
+    @pytest.mark.parametrize(
+        ["isbn", "asin", "expected"],
+        [
+            ("1111111111", "", True),  # ISBN 10
+            ("", "B06XYHVXVJ", True),  # ASIN
+            ("9780747532699", "", True),  # ISBN 13
+            ("0", "", False),  # Invalid ISBN length
+            ("", "0", False),  # Invalid ASIN length
+            ("", "", False),  # Nothing at all.
+        ],
+    )
+    def test_is_valid_identifier(self, isbn, asin, expected) -> None:
+        e: models.Edition = self.mock_edition(MockPrivateEdition)
+        got = e.is_valid_identifier(isbn=isbn, asin=asin)
+        assert got == expected
+
+    @pytest.mark.parametrize(
+        ["isbn", "asin", "expected"],
+        [
+            ("1111111111", "", ["1111111111", "9781111111113"]),
+            ("9780747532699", "", ["0747532699", "9780747532699"]),
+            ("", "B06XYHVXVJ", ["B06XYHVXVJ"]),
+            (
+                "9780747532699",
+                "B06XYHVXVJ",
+                ["0747532699", "9780747532699", "B06XYHVXVJ"],
+            ),
+            ("", "", []),
+        ],
+    )
+    def test_get_identifier_forms(
+        self, isbn: str, asin: str, expected: list[str]
+    ) -> None:
+        e: models.Edition = self.mock_edition(MockPrivateEdition)
+        got = e.get_identifier_forms(isbn=isbn, asin=asin)
+        assert got == expected
 
 
 class TestAuthor:
     def test_url(self):
-        data = {
-            "key": "/authors/OL1A",
-            "type": {"key": "/type/author"},
-            "name": "foo"
-        }
+        data = {"key": "/authors/OL1A", "type": {"key": "/type/author"}, "name": "foo"}
 
         e = models.Author(MockSite(), "/authors/OL1A", data=data)
 
@@ -86,135 +132,43 @@ class TestAuthor:
 
 class TestSubject:
     def test_url(self):
-        subject = models.Subject({
-            "key": "/subjects/love"
-        })
+        subject = models.Subject({"key": "/subjects/love"})
         assert subject.url() == "/subjects/love"
         assert subject.url("/lists") == "/subjects/love/lists"
 
 
-class TestList:
-    def test_owner(self):
-        models.register_models()
-        self._test_list_owner("/people/anand")
-        self._test_list_owner("/people/anand-test")
-        self._test_list_owner("/people/anand_test")
+class TestWork:
+    def test_resolve_redirect_chain(self, monkeypatch):
+        # e.g. https://openlibrary.org/works/OL2163721W.json
 
-    def _test_list_owner(self, user_key):
-        from openlibrary.mocks.mock_infobase import MockSite
-        site = MockSite()
-        list_key = user_key + "/lists/OL1L"
+        # Chain:
+        type_redir = {"key": "/type/redirect"}
+        type_work = {"key": "/type/work"}
+        work1_key = "/works/OL123W"
+        work2_key = "/works/OL234W"
+        work3_key = "/works/OL345W"
+        work4_key = "/works/OL456W"
+        work1 = {"key": work1_key, "location": work2_key, "type": type_redir}
+        work2 = {"key": work2_key, "location": work3_key, "type": type_redir}
+        work3 = {"key": work3_key, "location": work4_key, "type": type_redir}
+        work4 = {"key": work4_key, "type": type_work}
 
-        self.save_doc(site, "/type/user", user_key)
-        self.save_doc(site, "/type/list", list_key)
+        import web
 
-        list =  site.get(list_key)
-        assert list is not None
-        assert isinstance(list, models.List)
+        from openlibrary.mocks import mock_infobase
 
-        assert list.get_owner() is not None
-        assert list.get_owner().key == user_key
+        site = mock_infobase.MockSite()
+        site.save(web.storage(work1))
+        site.save(web.storage(work2))
+        site.save(web.storage(work3))
+        site.save(web.storage(work4))
+        monkeypatch.setattr(web.ctx, "site", site, raising=False)
 
-    def save_doc(self, site, type, key, **fields):
-        d = {
-            "key": key,
-            "type": {"key": type}
-        }
-        d.update(fields)
-        site.save(d)
-
-class TestLibrary:
-    def test_class(self, mock_site):
-        mock_site.save({
-            "key": "/libraries/ia",
-            "type": {"key": "/type/library"}
-        })
-        doc = mock_site.get("/libraries/ia")
-        assert doc.__class__.__name__ == "Library"
-
-    def test_parse_ip_ranges(self):
-        doc = models.Library(None, "/libraries/foo")
-        def compare_ranges(test, expect):
-            result = list(doc.parse_ip_ranges(test))
-            assert result == expect
-        compare_ranges("", [])
-        compare_ranges("1.2.3.4", ["1.2.3.4"])
-        compare_ranges("1.2.3.4", ["1.2.3.4"])
-        compare_ranges("1.1.1.1\n2.2.2.2", ["1.1.1.1", "2.2.2.2"])
-        compare_ranges("1.1.1.1-2.2.2.2", [("1.1.1.1", "2.2.2.2")])
-        compare_ranges("1.1.1.1 # comment \n2.2.2.2", ["1.1.1.1", "2.2.2.2"])
-        compare_ranges("1.1.1.1\n # comment \n2.2.2.2", ["1.1.1.1", "2.2.2.2"])
-        compare_ranges("1.2.3.0/24", ["1.2.3.0/24"])
-        compare_ranges("1.2.3.*", ["1.2.3.0/24"])
-        compare_ranges("1.2.*.*", ["1.2.0.0/16"])
-        compare_ranges("1.*.*.*", ["1.0.0.0/8"])
-        compare_ranges("*", [])
-        compare_ranges("*.1", [])
-        compare_ranges("1.2.3-10.*", [("1.2.3.0", "1.2.10.255")])
-        compare_ranges("1.2.3.", [("1.2.3.0", "1.2.3.255")])
-        compare_ranges("1.1.", [])
-        compare_ranges("1.2.3.1-254", [("1.2.3.1", "1.2.3.254")])
-        compare_ranges("216.63.14.0/24\n207.193.121.0/24\n207.193.118.0/24", ["216.63.14.0/24", "207.193.121.0/24", "207.193.118.0/24"])
-        compare_ranges("208.70.20-30.", [])
-
-    def test_bad_ip_ranges(self):
-        doc = models.Library(None, "/libraries/foo")
-        def test_ranges(test, expect):
-            result = doc.find_bad_ip_ranges(test)
-            assert result == expect
-        test_ranges("", [])
-        test_ranges("1.2.3.4", [])
-        test_ranges("1.1.1.1\n2.2.2.2", [])
-        test_ranges("1.1.1.1-2.2.2.2", [])
-        test_ranges("1.1.1.1 # comment \n2.2.2.2", [])
-        test_ranges("1.1.1.1\n # comment \n2.2.2.2", [])
-        test_ranges("1.2.3.0/24", [])
-        test_ranges("1.2.3.*", [])
-        test_ranges("1.2.*.*", [])
-        test_ranges("1.*.*.*", [])
-        test_ranges("*", ["*"])
-        test_ranges("*.1", ["*.1"])
-        test_ranges("1.2.3-10.*", [])
-        test_ranges("1.2.3.", [])
-        test_ranges("1.1.", ['1.1.'])
-        test_ranges("1.2.3.1-254", [])
-        test_ranges("216.63.14.0/24\n207.193.121.0/24\n207.193.118.0/24", [])
-        test_ranges("1.2.3.4,2.3.4.5", ["1.2.3.4,2.3.4.5"])
-        test_ranges("1.2-3.*", ["1.2-3.*"])
-
-    def test_has_ip(self, mock_site):
-        mock_site.save({
-            "key": "/libraries/ia",
-            "type": {"key": "/type/library"},
-            "ip_ranges": "1.1.1.1\n2.2.2.0/24"
-        })
-
-        ia = mock_site.get("/libraries/ia")
-        assert ia.has_ip("1.1.1.1")
-        assert not ia.has_ip("1.1.1.2")
-
-        assert ia.has_ip("2.2.2.10")
-        assert not ia.has_ip("2.2.10.2")
-
-        mock_site.save({
-            "key": "/libraries/ia",
-            "type": {"key": "/type/library"},
-            "ip_ranges": "1.1.1.",
-        })
-
-        ia = mock_site.get("/libraries/ia")
-        assert ia.has_ip("1.1.1.1")
-        assert ia.has_ip("1.1.1.2")
-
-        assert not ia.has_ip("2.2.2.10")
-        assert not ia.has_ip("2.2.10.2")
-
-        mock_site.save({
-            "key": "/libraries/ia",
-            "type": {"key": "/type/library"},
-            "ip_ranges": "1.1.",
-        })
-
-        ia = mock_site.get("/libraries/ia")
-
-        assert not ia.has_ip("2.2.2.2")
+        work_key = "/works/OL123W"
+        redirect_chain = models.Work.get_redirect_chain(work_key)
+        assert redirect_chain
+        resolved_work = redirect_chain[-1]
+        assert (
+            str(resolved_work.type) == type_work['key']
+        ), f"{resolved_work} of type {resolved_work.type} should be {type_work['key']}"
+        assert resolved_work.key == work4_key, f"Should be work4.key: {resolved_work}"

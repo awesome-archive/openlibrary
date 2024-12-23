@@ -106,7 +106,7 @@
     div.icon.list {
       background-image: none;
     }
-    #widget-head {
+    .lists-widget-head {
       display: none;
     }
   }
@@ -136,26 +136,11 @@
 
   table {
     width: 250px;
-    &.buy-options-table {
-      border-spacing: 5px;
-      margin-left: 0;
-      width: 175px;
-      white-space: nowrap;
-
-      td {
-        padding: 0;
-        &.price {
-          text-align: right;
-        }
-      }
-    }
-
     td {
       font-size: .6875em;
       font-family: @lucida_sans_serif-1;
       &.price {
         padding: 3px 0 0;
-        text-align: right;
       }
       &.vendor {
         padding: 3px 10px 0 42px;
@@ -167,7 +152,7 @@
     font-size: 100%;
     min-height: 32px;
     width: 250px;
-    font-family: @lucida_sans_serif-1!important;
+    font-family: @lucida_sans_serif-1 !important;
     font-weight: normal;
     outline: 0;
     position: relative;
@@ -280,9 +265,6 @@
     &.list {
       background-position: 0 0;
     }
-    &.listed {
-      background-position: -32px 0;
-    }
   }
 
   p {
@@ -294,7 +276,7 @@
   #readBooks p {
     font-size: .75em !important;
   }
-  #widget-add.old-style-lists {
+  .widget-add.old-style-lists {
     div.edition-page-lists-dropdown {
       margin: 0;
       left: 0;
@@ -335,7 +317,7 @@ div.tools-override {
     }
   }
 
-  #widget-lists {
+  .listLists {
     margin: 0;
     clear: both;
 

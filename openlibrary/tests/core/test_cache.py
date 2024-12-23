@@ -1,8 +1,8 @@
 import time
-import simplejson
 
 from openlibrary.core import cache
 from openlibrary.mocks import mock_memcache
+
 
 class Test_memcache_memoize:
     def test_encode_args(self):
@@ -18,6 +18,7 @@ class Test_memcache_memoize:
     def test_generate_key_prefix(self):
         def foo():
             pass
+
         m = cache.memcache_memoize(foo)
         assert m.key_prefix[:4] == "foo_"
 
@@ -59,16 +60,20 @@ class Test_memcache_memoize:
 
         assert m.memcache_get([20], {})[0] == 400
 
-    def test_timeout(self):
+    def test_timeout(self, monkeytime):
         m = self.square_memoize()
         m.timeout = 0.1
         s = m.stats
 
         assert m(10) == 100
-        time.sleep(0.1)
 
+        time.sleep(0.1)
         assert m(10) == 100
-        assert [s.calls, s.hits, s.updates, s.async_updates] == [2, 1, 1, 1]
+        assert [s.calls, s.hits, s.updates, s.async_updates] == [2, 1, 1, 0]
+
+        time.sleep(0.01)
+        assert m(10) == 100
+        assert [s.calls, s.hits, s.updates, s.async_updates] == [3, 2, 1, 1]
 
     def test_delete(self):
         m = self.square_memoize()
@@ -83,6 +88,7 @@ class Test_memcache_memoize:
         m(10)
         assert m.stats.updates == 2
 
+
 class Test_memoize:
     def teardown_method(self, method):
         cache.memory_cache.clear()
@@ -95,9 +101,9 @@ class Test_memoize:
 
     def test_signatures(self):
         def square(x):
-            """Returns square x.
-            """
+            """Returns square x."""
             return x * x
+
         msquare = cache.memoize(engine="memory", key="square")(square)
         assert msquare.__name__ == square.__name__
         assert msquare.__doc__ == square.__doc__
@@ -128,3 +134,38 @@ class Test_memoize:
         assert self.get("3") == {"square": 9}
         assert double(3) == 6
         assert self.get("3") == {"square": 9, "double": 6}
+
+
+class Test_method_memoize:
+    def test_handles_no_args(self):
+        class A:
+            def __init__(self):
+                self.result = 0
+
+            @cache.method_memoize
+            def foo(self):
+                self.result += 1
+                return self.result
+
+        a = A()
+        assert a.foo() == 1
+        assert a.foo() == 1
+        assert a.result == 1
+
+    def test_handles_args(self):
+        class A:
+            def __init__(self):
+                self.result = 1
+
+            @cache.method_memoize
+            def foo(self, multiplier):
+                self.result *= multiplier
+                return self.result
+
+        a = A()
+        assert a.foo(2) == 2
+        assert a.foo(2) == 2
+        assert a.result == 2
+        assert a.foo(3) == 6
+        assert a.foo(2) == 2
+        assert a.result == 6

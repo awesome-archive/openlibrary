@@ -1,46 +1,18 @@
 $def with (page)
 
-$if ctx.user and ("merge-authors" in ctx.features or ctx.user.is_admin()) and query_param('merge', 'false') == 'true':
-    <script type="text/javascript">
-    // <!--
-    window.q.push(function() {
-        if ("$query_param('merge', 'false')" == "true") {
-            \$("#preMerge").parent().andSelf().show();
+$# Most authors are people, so only use org in the exceptional case that
+$# the record explicitly is labelled as such.
+$if page.entity_type == 'org':
+    $ entityTypeSchema = "https://schema.org/Organization"
+$else:
+    $ entityTypeSchema = "https://schema.org/Person"
 
-            $ duplicates = ["/authors/" + k for k in query_param("duplicates", "").split(",")]
-            var data = {
-                "master": "$page.key",
-                "duplicates": $:json_encode(duplicates)
-            };
-            /*
-            \$.post("/authors/merge.json", JSON.stringify(data),
-                function(result, status, req) {
-                    \$("#preMerge").fadeOut(); \$("#postMerge").fadeIn();
-                },
-                "json"
-            );
-            */
+$ bodyattrs = ctx.setdefault('bodyattrs', [])
+$ bodyattrs.append('itemscope')
+$ bodyattrs.append('itemtype="%s"' % entityTypeSchema)
 
-            \$.ajax({
-                url: "/authors/merge.json",
-                type: "POST",
-                data: JSON.stringify(data),
-                success: function(data, textStatus, XMLHttpRequest) {
-                    \$("#preMerge").fadeOut();
-                    \$("#postMerge").fadeIn();
-                },
-                error: function(XMLHttpRequest, textStatus, errorThrown) {
-                    \$("#preMerge").fadeOut();
-                    \$("#errorMerge").fadeIn();
-                }
-            });
-        }
-    });
-    //-->
-    </script>
-
-$ title = page.get('name', 'name missing')
-$ title_with_site = title + " | Open Library"
+$ title = page.get('name', _('name missing'))
+$ title_with_site = _("%(page_title)s | Open Library", page_title=title)
 $ meta_photo_url = item_image(page.get_photo_url("L"), "https://openlibrary.org/images/icons/avatar_author-lg.png")
 
 $var title: $title
@@ -48,15 +20,16 @@ $var history: $page.history
 
 $ olid = page.key.split('/')[-1]
 
-$ books = page.get_books()
+$ books = page.get_books(q=query_param('q'))
 $ book_list_excerpt = ''
-$if books and books.works:
-    $ book_titles_excerpt = [work.title for work in books.works[:8]]
+$if books and books.docs:
+    $ book_titles_excerpt = [work.title for work in books.docs[:8]]
     $ book_list_excerpt = ', '.join(book_titles_excerpt)
-$ description = "Author of " + book_list_excerpt
-$putctx("description", description)
 
-$ library = (get_library() if 'inlibrary' in ctx.features else None)
+$ books_count = books.num_found or 0
+
+$ description = _("Author of %(book_titles)s", book_titles=book_list_excerpt)
+$putctx("description", description)
 
 $add_metatag(property="og:title", content=title_with_site)
 $add_metatag(property="og:type", content="books.author")
@@ -67,37 +40,45 @@ $add_metatag(property="og:description", content=description)
 
 $set_share_links(url=request.canonical_url, title=title, view_context=ctx)
 
+$ show_librarian_extras = ctx.user and (ctx.user.is_admin() or ctx.user.is_librarian())
 <div id="contentHead">
 
     $:macros.databarView(page)
 
-    <h1>$page.get('name', 'name missing')</h1>
-    <h2 class="author collapse">
-    $if page.birth_date or page.death_date:
-        $page.birth_date - $page.death_date
-    $else:
-        $if page.date:
-            $page.date
-    </h2>
+    <h1 itemprop="name">$title</h1>
+    $if show_librarian_extras:
+        <h2 class="author collapse">
+            $if page.birth_date or page.death_date:
+                <span itemprop="birthDate">$page.birth_date</span> - <span itemprop="deathDate">$page.death_date</span>
+            $else:
+                $if page.date:
+                    $page.date
+        </h2>
+
 </div>
 
-<script type="text/javascript">
-<!--
-window.q.push(function(){\$("#coverPop").colorbox({inline:true, opacity:"0.5", href:"#addImage"});});
-//-->
-</script>
-
 <div id="contentBody">
-
     $if ctx.user and ("merge-authors" in ctx.features or ctx.user.is_admin()) and query_param('merge', 'false') == 'true':
-       <div class="message" style="display: none;">
-            <div id="preMerge" style="display: none;">
-                <p class="larger collapse"><strong>Merging Authors...</strong></p>
-                <p class="collapse adjust"><img src="/images/ajax-loader-bar.gif" width="220" height="19" alt="In progress..."/></p>
-                <p class="smaller lightgreen collapse">Duplicates</p>
+        $ mrid = query_param('mrid', None)
+        $ comment = query_param('comment', None)
+        $ duplicate_olids = query_param('duplicates', '').split(',')
+        $ duplicates = ["/authors/" + k for k in duplicate_olids]
+        $ data = {'master': page.key, 'duplicates': duplicates}
+        $if mrid:
+            $ data['mrid'] = mrid
+        $if comment:
+            $ data['comment'] = comment
+
+        $ olids = '%s,%s' % (page.key.split('/')[-1], query_param('duplicates', ''))
+        $ data['olids'] = olids
+
+        <div class="message" style="display: none;">
+            <div id="preMerge" style="display: none;" data-keys="$dumps(data)">
+                <p class="larger collapse"><strong>$_('Merging Authors...')</strong></p>
+                <p class="collapse adjust"><img src="/images/ajax-loader-bar.gif" width="220" height="19" alt="$_('In progress...')"/></p>
+                <p class="smaller lightgreen collapse">$_('Duplicates')</p>
                 <p class="small collapse">
                     <ul>
-                        $ duplicates = ["/authors/" + k for k in query_param("duplicates", "").split(",")]
                         $for key in duplicates:
                              $ doc = get_document(key)
                              $if doc:
@@ -106,118 +87,119 @@ window.q.push(function(){\$("#coverPop").colorbox({inline:true, opacity:"0.5", h
                 </p>
             </div>
             <div id="postMerge" style="display: none;">
-                <p class="right small"><b><a href="$page.key">Refresh the page</a>?</b></p>
-                <p class="larger collapse"><strong>Success!</strong></p>
-                <p class="small collapse">OK. The merge is in motion. <i>It will take <u>a few minutes to finish</u> the update.</i></p>
+                <p class="right small"><b><a href="$page.key">$_('Refresh the page?')</a></b></p>
+                <p class="larger collapse"><strong>$_('Success!')</strong></p>
+                <p class="small collapse">$:_('OK. The merge is in motion. <i>It will take <u>a few minutes to finish</u> the update.</i>')</p>
             </div>
 
             <div id="errorMerge" style="display: none;">
-                <p class="larger collapse"><strong>Argh!</strong></p>
-                <p class="small collapse">That merge didn't work. It's our fault, and we've made a note of it.</p>
+                <p class="larger collapse"><strong>$_('Argh!')</strong></p>
+                <p class="small collapse">$_("That merge didn't work. It's our fault, and we've made a note of it.")</p>
             </div>
         </div>
 
     <div class="contentTwothird" style="margin-bottom:0;">
 
-        $:format(page.get('bio', ''))
-
-        $if page.website:
-            <div class="section">
-                <h6 class="collapse black uppercase">$_("Website")</h6>
-                <a href="$page.website" class="datalink">$page.website</a>
-            </div>
+        <div itemprop="description">
+            $:format(page.get('bio', ''))
+        </div>
 
         $if page.location:
             <div class="section hidden">
                 <h6 class="collapse black uppercase">$_("Location")</h6>
                 $page.location
             </div>
-
+        <span class="mobile-only">
+            $:render_template("authors/infobox", page, imagesId="mobile")
+        </span>
         <div class="clearfix"></div>
         <div id="works" class="section">
                 <h2 class="collapse">
-                    $commify(books.num_found) work$("s" if books.num_found != 1 else "")
-                    <span class="count smaller"><a href="/books/add?author=$page.key">Add another</a>?</span>
+                    $ungettext("%(count)d work", "%(count)d works", books_count, count=books_count)
+                    <span class="count smaller"><a href="/books/add?author=$page.key">$_('Add another?')</a></span>
                 </h2>
-                <p id="books"><span class="tools">
-                $if books.num_found > 1:
-                    <img src="/images/icons/icon_sort.png" alt="Sorting by" width="9" height="11" style="margin-right:5px;"/>
-                    $if books.sort == 'editions':
-                        <strong class="lightgreen">Most Editions</strong> | <a href="$changequery(sort='old')#editions">First Published</a> | <a href="$changequery(sort='new')#editions">Most Recent</a>
-                    $elif books.sort == 'old':
-                        <a href="$changequery(sort=None)#editions">Most Editions</a> | <strong class="lightgreen">First Published</strong> | <a href="$changequery(sort='new')#editions">Most Recent</a>
-                    $elif books.sort == 'new':
-                        <a href="$changequery(sort=None)#editions">Most Editions</a> |  <a href="$changequery(sort='old')#editions">First Published</a> | <strong class="lightgreen">Most Recent</strong>
-                    $elif books.sort == 'title':
-                        <a href="$changequery(sort=None)#editions">Most Editions</a> |  <a href="$changequery(sort='old')#editions">First Published</a> | <a href="$changequery(sort='new')#editions">Most Recent</a> | <strong class="lightgreen">Title</strong>
-                </span>
+                $if books_count > 1:
+                  <div id="books">
+                    $:render_template("search/sort_options.html", books.sort, exclude='relevance', default_sort='editions')
+                  </div>
+                <p>
+                  $if input(mode="everything").mode == "everything":
+                    $:_('Showing all works by author. Would you like to see <a href="%(url)s">only ebooks</a>?', url=changequery(mode='ebooks'))
+                  $else:
+                    $:_('Showing ebooks only. Would you like to see <a href="%(url)s">everything</a> by this author?', url=changequery(mode='everything'))
+                </p>
 
-                <span class="mode-options">
-                  <input type="radio" name="mode" value="everything" id="mode-search-everything" class="search-mode">
-                  <label for="mode-search-everything">Everything</label>
-                  <input type="radio" name="mode" value="ebooks" id="mode-search-ebooks" class="search-mode">
-                  <label for="mode-search-ebooks">Ebooks</label>
-                  <input type="radio" name="mode" value="printdisabled" id="mode-search-printdisabled" class="search-mode">
-                  <label for="mode-search-printdisabled">Print Disabled</label>
-                </span>
-</p>
+                <form method="GET" class="olform pagesearchbox">
+                  <input type="hidden" name="has_fulltext" value="true"/>
+                  $if (query_param('sort')):
+                    <input type="hidden" name="sort" value="$query_param('sort')"/>
+                  $if (query_param('mode')):
+                    <input type="hidden" name="mode" value="$query_param('mode')"/>
+                  $:render_template("search/searchbox", q=query_param('q'), placeholder=_('Search %(author)s books', author=title))
+                </form>
 
+                $:macros.Pager(page=safeint(query_param('page'), default=1), num_found=books_count)
 
                 <div id="searchResults">
-                    <ul id="siteSearch" class="list-books">
-                      $for doc in books.works:
-                         $:macros.SearchResultsWork(doc)
+                    <ul class="list-books">
+                      $for doc in books.docs:
+                         $:macros.SearchResultsWork(doc, show_librarian_extras=show_librarian_extras, include_dropper=True)
                     </ul>
                 </div>
-        </div>
 
+                $:macros.Pager(page=safeint(query_param('page'), default=1), num_found=books_count)
+        </div>
     </div>
     <div class="contentOnethird">
-
-        <div class="illustration">
-            $:render_template("covers/author_photo", page)
-            $:render_template("covers/change", page, ".bookCover img")
-        </div>
-
+        <span class="desktop-only">
+            $:render_template("authors/infobox", page, imagesId="desktop")
+        </span>
         $def render_subjects(label, subjects, prefix):
             $if subjects:
-                <div class="section">
-                    <h6 class="collapse black uppercase">$label</h6>
-                    <div class="sansserif">
-                    $for subject, count in subjects:
-                        <a href="/subjects/$prefix$subject.lower().replace(' ', '_')">$subject</a>$cond(not loop.last, ",", "")
-                    </div>
+                <div class="section link-box link-box--with-header">
+                    <h3 class="collapse black uppercase">$label</h3>
+                    $for _, subject, count in subjects:
+                        <a itemprop="knowsAbout" href="/subjects/$prefix$subject.lower().replace(' ', '_')">$subject</a>$cond(not loop.last, ",", "")
                 </div>
 
         <!-- SUBJECTS DISPLAY -->
-        $if books.num_found > 0:
-            $:render_subjects("Subjects", books.get_facet('subject_facet'), '')
-            $:render_subjects("Places", books.get_facet('place_facet'), 'place:')
-            $:render_subjects("People", books.get_facet('person_facet'), 'person:')
-            $:render_subjects("Time", books.get_facet('time_facet'), 'time:')
+        $if books_count > 0:
+            $:render_subjects(_("Subjects"), books.facet_counts.get('subject_facet'), '')
+            $:render_subjects(_("Places"), books.facet_counts.get('place_facet'), 'place:')
+            $:render_subjects(_("People"), books.facet_counts.get('person_facet'), 'person:')
+            $:render_subjects(_("Time"), books.facet_counts.get('time_facet'), 'time:')
         <!-- /SUBJECTS -->
 
         $if "lists" in ctx.features:
             <div class="section Tools">
-                $:render_template("lists/widget", page, include_rating=False)
+                $:render_template("lists/widget", page, include_rating=False, async_load=True, show_active_lists=True, include_showcase=False)
             </div>
 
         <div class="section">
-            <h3>$_('Links') <span class="gray small sansserif">($_('outside Open Library'))</span></h3>
-
-            $if page.links or page.remote_ids or (page.wikipedia and page.wikipedia.startswith("http")):
-                <ul class="booklinks sansserif">
+            <h3>$_('ID Numbers')</h3>
+            <ul class="booklinks sansserif">
+                <li>$_('OLID'): $olid</li>
                 $if page.remote_ids:
-                    $if page.remote_ids.isni:
-                       $ isni = page.remote_ids.isni
-                       <li>ISNI: <a href="http://www.isni.org/$isni">$' '.join([isni[i:i+4] for i in range(0, 16, 4)])</a></li>
-                    $if page.remote_ids.viaf:
-                        $ viaf = page.remote_ids.viaf
-                        <li>VIAF: <a href="https://viaf.org/viaf/$viaf">$viaf</a></li>
-                    $if page.remote_ids.wikidata:
-                        <li>Wikidata: <a href="https://tools.wmflabs.org/reasonator/?q=$page.remote_ids.wikidata">$page.remote_ids.wikidata</a></li>
+                    $ configured_ids = get_author_config()['identifiers']
+                    $for id in configured_ids:
+                        $if id.name in page.remote_ids:
+                            $ href = id.url.replace('@@@', page.remote_ids[id.name])
+                            <li>$id.label: <a itemprop="sameAs" href="$href">$page.remote_ids[id.name]</a></li>
+                            $if id.name == 'wikidata' and 'inventaire' not in page.remote_ids:
+                              <li>$_("Inventaire.io:") <a
+                                  itemprop="sameAs"
+                                  href="https://inventaire.io/entity/wd:$page.remote_ids[id.name]"
+                              >wd:$page.remote_ids[id.name]</a></li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h3>$:_('Links <span class="gray small sansserif">outside Open Library</span>')</h3>
+
+            $if page.links or (page.wikipedia and page.wikipedia.startswith("http")):
+                <ul class="booklinks sansserif">
                 $if page.wikipedia and page.wikipedia.startswith("http"):
-                    <li><a href="$page.wikipedia">Wikipedia</a></li>
+                    <li><a itemprop="sameAs" href="$page.wikipedia">$_("Wikipedia")</a></li>
                 $for link in page.links:
                     <li><a href="$link.url">$link.title</a></li>
                 </ul>
@@ -230,42 +212,13 @@ window.q.push(function(){\$("#coverPop").colorbox({inline:true, opacity:"0.5", h
             $if page.alternate_names != [""]:
                 <div class="section">
                     <h3>$_("Alternative names")</h3>
-                    <ul class="booklinks sansserif"><li>$:"</li><li>".join(page.alternate_names)</li></ul>
+                    <ul class="booklinks sansserif">
+                        $for alternate_name in page.alternate_names:
+                            <li itemprop="alternateName">$alternate_name</li>
+                    </ul>
                 </div>
 
     </div>
-
-    $ pages = (books.num_found / 100) + 1
-    $ page_num = safeint(query_param('page'), default=1)
-        $if pages != 1:
-            $ pages_in_set = 10
-            $ half = pages_in_set/2
-            $if pages < pages_in_set:
-                $ first_page_in_set = 1
-                $ last_page_in_set = pages
-            $elif page_num < half:
-                $ first_page_in_set = 1
-                $ last_page_in_set = min((pages_in_set, pages))
-            $elif page_num > (pages-half):
-                $ first_page_in_set = pages-pages_in_set
-                $ last_page_in_set = pages
-            $else:
-                $ first_page_in_set = page_num-half
-                $ last_page_in_set = page_num+half
-            <div class="clearfix"></div>
-            <div class="pagination">
-            $if page_num != 1:
-                <a href="$changequery(page=None)" class="ChoosePage">&laquo;&nbsp;First</a>
-                <a href="$changequery(page=page_num-1)" class="ChoosePage">&lt;&nbsp;Previous</a>
-            $for p in range(first_page_in_set, last_page_in_set+1):
-                $if p == page_num:
-                    <span class="this">$p</span>
-                $else:
-                    <a href="$changequery(page=p)" class="ChoosePage">$p</a>
-            $if page_num < pages:
-                <a href="$changequery(page=page_num+1)" class="ChoosePage">Next&nbsp;&gt;</a>
-                <a href="$changequery(page=pages)" class="ChoosePage">Last&nbsp;&raquo;</a>
-            </div>
 
     $:render_template("lib/history", page)
 </div>

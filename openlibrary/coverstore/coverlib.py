@@ -1,24 +1,20 @@
 """Cover management."""
-from __future__ import print_function
 
-try:
-    from PIL import Image
-except ImportError:
-    import Image
-import os
-from cStringIO import StringIO
-import web
 import datetime
+import os
+from io import BytesIO
+from logging import getLogger
 
-import config
-import db
-from utils import random_string, rm_f
+import web
+from PIL import Image
 
-__all__ = [
-    "save_image",
-    "read_image",
-    "read_file"
-]
+from openlibrary.coverstore import config, db
+from openlibrary.coverstore.utils import random_string, rm_f
+
+logger = getLogger("openlibrary.coverstore.coverlib")
+
+__all__ = ["save_image", "read_image", "read_file"]
+
 
 def save_image(data, category, olid, author=None, ip=None, source_url=None):
     """Save the provided image data, creates thumbnails and adds an entry in the database.
@@ -31,12 +27,14 @@ def save_image(data, category, olid, author=None, ip=None, source_url=None):
     if img is None:
         raise ValueError("Bad Image")
 
-    d = web.storage({
-        'category': category,
-        'olid': olid,
-        'author': author,
-        'source_url': source_url,
-    })
+    d = web.storage(
+        {
+            'category': category,
+            'olid': olid,
+            'author': author,
+            'source_url': source_url,
+        }
+    )
     d['width'], d['height'] = img.size
 
     filename = prefix + '.jpg'
@@ -48,33 +46,39 @@ def save_image(data, category, olid, author=None, ip=None, source_url=None):
     d.id = db.new(**d)
     return d
 
-def make_path_prefix(olid, date=None):
-    """Makes a file prefix for storing an image.
-    """
-    date = date or datetime.date.today()
-    return "%04d/%02d/%02d/%s-%s" % (date.year, date.month, date.day, olid, random_string(5))
 
-def write_image(data, prefix):
+def make_path_prefix(olid, date=None):
+    """Makes a file prefix for storing an image."""
+    date = date or datetime.date.today()
+    return "%04d/%02d/%02d/%s-%s" % (
+        date.year,
+        date.month,
+        date.day,
+        olid,
+        random_string(5),
+    )
+
+
+def write_image(data: bytes, prefix: str) -> Image.Image | None:
     path_prefix = find_image_path(prefix)
     dirname = os.path.dirname(path_prefix)
     if not os.path.exists(dirname):
         os.makedirs(dirname)
     try:
         # save original image
-        f = open(path_prefix + '.jpg', 'w')
-        f.write(data)
-        f.close()
+        with open(path_prefix + '.jpg', 'wb') as f:
+            f.write(data)
 
-        img = Image.open(StringIO(data))
+        img = Image.open(BytesIO(data))
         if img.mode != 'RGB':
-            img = img.convert('RGB')
+            img = img.convert('RGB')  # type: ignore[assignment]
 
         for name, size in config.image_sizes.items():
-            path = "%s-%s.jpg" % (path_prefix, name)
+            path = f"{path_prefix}-{name}.jpg"
             resize_image(img, size).save(path, quality=90)
         return img
-    except IOError as e:
-        print('ERROR:', str(e))
+    except OSError:
+        logger.exception("write_image() failed")
 
         # cleanup
         rm_f(prefix + '.jpg')
@@ -84,40 +88,46 @@ def write_image(data, prefix):
 
         return None
 
+
 def resize_image(image, size):
     """Resizes image to specified size while making sure that aspect ratio is maintained."""
     # from PIL
     x, y = image.size
-    if x > size[0]: y = max(y * size[0] / x, 1); x = size[0]
-    if y > size[1]: x = max(x * size[1] / y, 1); y = size[1]
+    if x > size[0]:
+        y = max(y * size[0] // x, 1)
+        x = size[0]
+    if y > size[1]:
+        x = max(x * size[1] // y, 1)
+        y = size[1]
     size = x, y
 
-    return image.resize(size, Image.ANTIALIAS)
+    return image.resize(size, Image.LANCZOS)
+
 
 def find_image_path(filename):
     if ':' in filename:
-        return os.path.join(config.data_root,'items', filename.rsplit('_', 1)[0], filename)
+        return os.path.join(
+            config.data_root, 'items', filename.rsplit('_', 1)[0], filename
+        )
     else:
         return os.path.join(config.data_root, 'localdisk', filename)
+
 
 def read_file(path):
     if ':' in path:
         path, offset, size = path.rsplit(':', 2)
-        offset = int(offset)
-        size = int(size)
-        f = open(path)
-        f.seek(offset)
-        data = f.read(size)
-        f.close()
-    else:
-        f = open(path)
-        data = f.read()
-        f.close()
-    return data
+        with open(path, 'rb') as f:
+            f.seek(int(offset))
+            return f.read(int(size))
+    with open(path, 'rb') as f:
+        return f.read()
+
 
 def read_image(d, size):
     if size:
-        filename = d['filename_' + size.lower()] or d.filename + "-%s.jpg" % size.upper()
+        filename = (
+            d['filename_' + size.lower()] or d.filename + "-%s.jpg" % size.upper()
+        )
     else:
         filename = d.filename
     path = find_image_path(filename)
